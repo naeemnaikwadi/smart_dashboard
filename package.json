@@ -1,0 +1,23 @@
+{
+  "name": "smart-learning-dashboard",
+  "version": "1.0.0",
+  "private": true,
+"scripts": {
+  "start-client": "npm --prefix client start",
+  "start-server": "npm --prefix server run dev",
+  "start-livekit": "server\\livekit-server.exe --config server\\livekit.yaml",
+  "start": "concurrently -k -n \"server,client,livekit\" -c \"green,blue,magenta\" \"npm run start-server\" \"powershell -Command Start-Sleep -Seconds 5; npm run start-client\" \"npm run start-livekit\""
+ },
+  "dependencies": {
+    "@livekit/components-react": "^2.9.14",
+    "@livekit/components-styles": "^1.1.6",
+    "@reduxjs/toolkit": "^2.8.2",
+    "livekit-client": "^2.15.3",
+    "react-redux": "^9.2.0",
+    "redux": "^5.0.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "nodemon": "^3.1.10"
+  }
+}
