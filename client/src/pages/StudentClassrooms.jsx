@@ -4,6 +4,7 @@ import axios from 'axios';
 import DashboardLayout from '../components/DashboardLayout';
 import ConfirmJoinClassroomModal from '../components/ConfirmJoinClassroomModal';
 import JoinClassroomPromptModal from '../components/JoinClassroomPromptModal';
+import { BookOpen, Plus, Users, Target, Eye, ArrowRight } from 'lucide-react';
 
 const StudentClassrooms = () => {
   const navigate = useNavigate();
@@ -71,11 +72,20 @@ const StudentClassrooms = () => {
     <DashboardLayout role="student">
       <div className="p-6 max-w-5xl mx-auto">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-indigo-900 dark:text-white">Your Classrooms</h2>
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+              <BookOpen className="w-8 h-8 text-blue-600" />
+              Your Classrooms
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">
+              Access your learning spaces and continue your educational journey
+            </p>
+          </div>
           <button
             onClick={() => setIsPromptModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 hover:shadow-lg flex items-center gap-2"
           >
+            <Plus className="w-5 h-5" />
             Join Classroom
           </button>
         </div>
@@ -101,35 +111,61 @@ const StudentClassrooms = () => {
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {classrooms.map((classroom) => (
-              <div key={classroom._id} className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow hover:shadow-lg transition-shadow">
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="text-xl font-semibold text-gray-800 dark:text-white">
-                    {classroom.name}
-                  </h3>
+              <div key={classroom._id} className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700 group">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      {classroom.name}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Joined {formatDate(classroom.date)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                      <BookOpen className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    </div>
+                  </div>
                 </div>
                 
-                <p className="text-gray-600 dark:text-gray-300 mb-3">
-                  {classroom.description}
+                <p className="text-gray-600 dark:text-gray-300 mb-4 line-clamp-2">
+                  {classroom.description || 'No description provided'}
                 </p>
                 
-                <div className="space-y-2 text-sm">
-                  <p className="text-gray-500 dark:text-gray-400">
-                    <span className="font-medium">Course:</span> {classroom.course}
-                  </p>
-                  <p className="text-gray-500 dark:text-gray-400">
-                    <span className="font-medium">Date:</span> {formatDate(classroom.date)}
-                  </p>
-                  <p className="text-gray-500 dark:text-gray-400">
-                    <span className="font-medium">Students:</span> {classroom.students?.length || 0}
-                  </p>
+                <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                      <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs">Students</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">
+                        {classroom.students?.length || 0}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                      <Target className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs">Courses</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">
+                        {classroom.courses?.length || 0}
+                      </p>
+                    </div>
+                  </div>
                 </div>
                 
-                <div className="mt-4">
+                <div className="space-y-3">
                   <button
                     onClick={() => navigate(`/student/classroom/${classroom._id}`)}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg"
+                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-4 py-3 rounded-xl font-medium transition-all duration-200 hover:shadow-lg flex items-center justify-center gap-2 group-hover:scale-105"
                   >
+                    <Eye className="w-5 h-5" />
                     Open Classroom
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </button>
                 </div>
               </div>

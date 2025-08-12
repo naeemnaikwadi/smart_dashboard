@@ -25,7 +25,15 @@ import InstructorClassroomCourses from './pages/InstructorClassroomCourses';
 import CourseDetail from './pages/CourseDetail';
 import LiveSessionRoom from './pages/LiveSessionRoom';
 import ClassroomDetail from './pages/ClassroomDetail';
-
+import CreateLearningPath from './pages/CreateLearningPath';
+import ViewLearningPaths from './pages/ViewLearningPaths';
+import ReadingStatisticsDashboard from './pages/ReadingStatisticsDashboard';
+import LearningSession from './pages/LearningSession';
+import EditCourse from './pages/EditCourse';
+import Profile from './pages/Profile';
+import StudentDownloads from './pages/StudentDownloads';
+import StudentLiveSessions from './pages/StudentLiveSessions';
+import StudentCourses from './pages/StudentCourses';
 
 function App() {
   return (
@@ -60,6 +68,70 @@ function App() {
           }
         />
         <Route
+          path="/create-course/:classroomId"
+          element={
+            <ProtectedRoute role="instructor">
+              <CreateCourse />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/create-learning-path"
+          element={
+            <ProtectedRoute role="instructor">
+              <CreateLearningPath />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/learning-paths"
+          element={
+            <ProtectedRoute>
+              <ViewLearningPaths />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/learning-session/:pathId"
+          element={
+            <ProtectedRoute>
+              <LearningSession />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student/downloads"
+          element={
+            <ProtectedRoute role="student">
+              <StudentDownloads />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student/live-sessions"
+          element={
+            <ProtectedRoute role="student">
+              <StudentLiveSessions />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student-courses"
+          element={
+            <ProtectedRoute role="student">
+              <StudentCourses />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reading-statistics"
+          element={
+            <ProtectedRoute role="student">
+              <ReadingStatisticsDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/instructor/courses"
           element={
             <ProtectedRoute role="instructor">
@@ -82,14 +154,13 @@ function App() {
         />
 
         <Route
-  path="/student-dashboard"
-  element={
-    <ProtectedRoute role="student">
-      <StudentDashboard />
-    </ProtectedRoute>
-  }
-/>
-
+          path="/student-dashboard"
+          element={
+            <ProtectedRoute role="student">
+              <StudentDashboard />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Protected routes */}
         <Route
@@ -146,6 +217,22 @@ function App() {
           element={
             <ProtectedRoute>
               <CourseDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/edit-course/:id"
+          element={
+            <ProtectedRoute role="instructor">
+              <EditCourse />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
             </ProtectedRoute>
           }
         />

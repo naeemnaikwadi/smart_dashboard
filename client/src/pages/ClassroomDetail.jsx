@@ -6,9 +6,6 @@ import DashboardLayout from '../components/DashboardLayout';
 const ClassroomDetail = () => {
   const { id: classroomId } = useParams();
   const navigate = useNavigate();
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [date, setDate] = useState('');
   const [classroom, setClassroom] = useState(null);
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,42 +45,7 @@ const ClassroomDetail = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
 
-    try {
-      const response = await fetch('http://localhost:4000/api/courses/', {
-        method: 'POST',
-        headers: {
-          ...getAuthHeaders(),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name,
-          description,
-          date,
-          classroom: classroomId
-        })
-      });
-
-      if (response.ok) {
-        setSuccess('Course created successfully!');
-        setName('');
-        setDescription('');
-        setDate('');
-        // Refresh courses list
-        fetchData();
-      } else {
-        const errorData = await response.json();
-        setError(errorData.message || 'Failed to create course');
-      }
-    } catch (err) {
-      console.error('Error creating course:', err);
-      setError('Failed to create course');
-    }
-  };
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -112,12 +74,22 @@ const ClassroomDetail = () => {
           <h2 className="text-2xl font-bold text-indigo-900 dark:text-white">
             {classroom?.name} - Details
           </h2>
-          <button
-            onClick={() => navigate(userRole === 'instructor' ? '/instructor/classrooms' : '/student/classrooms')}
-            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
-          >
-            Back to Classrooms
-          </button>
+          <div className="flex gap-3">
+            {userRole === 'instructor' && (
+              <button
+                onClick={() => navigate(`/create-course/${classroomId}`)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                Create New Course
+              </button>
+            )}
+            <button
+              onClick={() => navigate(userRole === 'instructor' ? '/instructor/classrooms' : '/student/classrooms')}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Back to Classrooms
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -159,53 +131,18 @@ const ClassroomDetail = () => {
 
         {userRole === 'instructor' && (
           <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow mb-6">
-            <h3 className="text-xl font-bold mb-4">Create New Course</h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Course Name *
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter course name"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Description *
-                </label>
-                <textarea
-                  placeholder="Enter course description"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows="3"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Date *
-                </label>
-                <input
-                  type="date"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  required
-                />
-              </div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Course Management</h3>
               <button
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg"
+                onClick={() => navigate(`/create-course/${classroomId}`)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
               >
-                Create Course
+                Create New Course
               </button>
-            </form>
+            </div>
+            <p className="text-gray-600 dark:text-gray-300">
+              Click the button above to create a new course for this classroom.
+            </p>
           </div>
         )}
 

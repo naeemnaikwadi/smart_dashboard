@@ -18,6 +18,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['student', 'instructor'],
     required: true
+  },
+  avatarUrl: {
+    type: String,
+    default: '/uploads/default-avatar.png'
   }
 }, { timestamps: true });
 

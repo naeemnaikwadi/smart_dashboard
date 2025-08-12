@@ -44,6 +44,8 @@ app.use('/api/learning-paths', require('./routes/learningPathRoutes')); // Learn
 app.use('/api/instructor', require('./routes/instructorRoutes'));
 app.use('/api/courses', require('./routes/courses'));
 app.use('/api/classrooms', require('./routes/classrooms'));
+app.use('/api/student', require('./routes/student')); // Student routes
+app.use('/api/upload', require('./routes/fileUpload')); // File upload routes
 
 // Test route
 app.get('/test', (req, res) => {

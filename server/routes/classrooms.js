@@ -93,6 +93,20 @@ router.get('/instructor/:instructorId', auth, async (req, res) => {
   }
 });
 
+// 📌 Get classrooms for filters (dropdown options)
+router.get('/filters', auth, async (req, res) => {
+  try {
+    const classrooms = await Classroom.find({ instructor: req.user.id })
+      .select('_id name')
+      .sort({ name: 1 });
+    
+    res.json({ classrooms });
+  } catch (error) {
+    console.error('Fetch classrooms for filters error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // 📌 Get classrooms for the logged-in student
 router.get('/student/me', auth, async (req, res) => {
   try {

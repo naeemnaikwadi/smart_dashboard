@@ -324,4 +324,81 @@ router.delete('/:id/live-sessions/:sessionId', auth, instructorOnly, async (req,
     }
 });
 
+// POST /api/courses/:courseId/rate - Rate a course
+router.post('/:courseId/rate', auth, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { rating, review } = req.body;
+    const studentId = req.user.id;
+
+    // Validate rating
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+    }
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    // Check if student is enrolled in the course
+    if (!course.studentsEnrolled.includes(studentId)) {
+      return res.status(403).json({ error: 'You must be enrolled in this course to rate it' });
+    }
+
+    // Check if student has already rated this course
+    const existingRatingIndex = course.ratings.findIndex(r => r.studentId.toString() === studentId);
+    
+    if (existingRatingIndex !== -1) {
+      // Update existing rating
+      course.ratings[existingRatingIndex].rating = rating;
+      course.ratings[existingRatingIndex].review = review || '';
+      course.ratings[existingRatingIndex].createdAt = new Date();
+    } else {
+      // Add new rating
+      course.ratings.push({
+        studentId,
+        rating,
+        review: review || ''
+      });
+    }
+
+    // Save course to trigger pre-save middleware for average calculation
+    await course.save();
+
+    res.json({ 
+      message: 'Rating submitted successfully',
+      averageRating: course.averageRating,
+      totalRatings: course.totalRatings
+    });
+  } catch (error) {
+    console.error('Error rating course:', error);
+    res.status(500).json({ error: 'Failed to submit rating' });
+  }
+});
+
+// GET /api/courses/:courseId/ratings - Get course ratings
+router.get('/:courseId/ratings', auth, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    
+    const course = await Course.findById(courseId)
+      .populate('ratings.studentId', 'name email')
+      .select('ratings averageRating totalRatings');
+
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    res.json({
+      ratings: course.ratings,
+      averageRating: course.averageRating,
+      totalRatings: course.totalRatings
+    });
+  } catch (error) {
+    console.error('Error fetching course ratings:', error);
+    res.status(500).json({ error: 'Failed to fetch ratings' });
+  }
+});
+
 module.exports = router;

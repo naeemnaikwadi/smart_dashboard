@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getCurrentUser, getAuthHeaders } from '../utils/auth';
 import DashboardLayout from '../components/DashboardLayout';
+import CourseRating from '../components/CourseRating';
 
 const CourseDetail = () => {
   const { id: courseId } = useParams();
@@ -293,6 +294,16 @@ const CourseDetail = () => {
               }`}
             >
               Live Sessions ({course?.liveSessions?.length || 0})
+            </button>
+            <button
+              onClick={() => setActiveTab('ratings')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'ratings'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Ratings & Reviews
             </button>
           </nav>
         </div>
@@ -619,6 +630,22 @@ const CourseDetail = () => {
                 ))
               )}
             </div>
+          </div>
+        )}
+
+        {/* Ratings Tab */}
+        {activeTab === 'ratings' && (
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow">
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-6">
+              Course Ratings & Reviews
+            </h3>
+            <CourseRating 
+              courseId={courseId} 
+              onRatingChange={(newRating) => {
+                // Optionally update course data when rating changes
+                console.log('Rating updated:', newRating);
+              }}
+            />
           </div>
         )}
       </div>

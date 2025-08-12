@@ -2,13 +2,16 @@
 
 import React from 'react';
 
-export default function StatCard({ label, value, icon, bgColor, textColor }) {
+export default function StatCard({ label, value, icon, bgColor, textColor, subtitle }) {
   return (
-    <div className={`rounded-md shadow-sm p-3 ${bgColor} ${textColor} flex items-center gap-3`}>
-      <div className="text-sm">{React.cloneElement(icon, { size: 20 })}</div>
-      <div>
-        <div className="text-sm font-medium">{label}</div>
-        <div className="text-base font-semibold">{value}</div>
+    <div className={`rounded-xl shadow-md p-4 ${bgColor} ${textColor} flex items-center gap-4 transition-transform hover:scale-105`}>
+      <div className="text-lg">{React.cloneElement(icon, { size: 24 })}</div>
+      <div className="flex-1">
+        <div className="text-sm font-medium opacity-90">{label}</div>
+        <div className="text-2xl font-bold">{value}</div>
+        {subtitle && (
+          <div className="text-xs opacity-75 mt-1">{subtitle}</div>
+        )}
       </div>
     </div>
   );

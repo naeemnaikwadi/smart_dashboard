@@ -57,6 +57,28 @@ const LiveSessionSchema = new mongoose.Schema({
   }
 });
 
+const RatingSchema = new mongoose.Schema({
+  studentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  rating: {
+    type: Number,
+    required: true,
+    min: 1,
+    max: 5
+  },
+  review: {
+    type: String,
+    trim: true
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
 const CourseSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -82,9 +104,40 @@ const CourseSchema = new mongoose.Schema({
     required: true
   },
   materials: [MaterialSchema],
-  liveSessions: [LiveSessionSchema]
+  liveSessions: [LiveSessionSchema],
+  ratings: [RatingSchema],
+  averageRating: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5
+  },
+  totalRatings: {
+    type: Number,
+    default: 0
+  },
+  studentsEnrolled: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }]
 }, {
   timestamps: true
+});
+
+// Virtual for calculating average rating
+CourseSchema.virtual('calculatedAverageRating').get(function() {
+  if (this.ratings.length === 0) return 0;
+  const totalRating = this.ratings.reduce((sum, rating) => sum + rating.rating, 0);
+  return Math.round((totalRating / this.ratings.length) * 10) / 10;
+});
+
+// Pre-save middleware to update average rating
+CourseSchema.pre('save', function(next) {
+  if (this.ratings.length > 0) {
+    this.averageRating = this.calculatedAverageRating;
+    this.totalRatings = this.ratings.length;
+  }
+  next();
 });
 
 module.exports = mongoose.model('Course', CourseSchema);
