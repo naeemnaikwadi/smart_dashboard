@@ -19,6 +19,30 @@ const generateEntryCode = () => {
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 };
 
+// 📌 Get all classrooms (for testing and general access)
+router.get('/', auth, async (req, res) => {
+  try {
+    let classrooms;
+    
+    if (req.user.role === 'instructor') {
+      // Instructors see their own classrooms
+      classrooms = await Classroom.find({ instructor: req.user.id })
+        .populate('instructor', 'name email')
+        .sort({ createdAt: -1 });
+    } else {
+      // Students see classrooms they're enrolled in
+      classrooms = await Classroom.find({ students: req.user.id })
+        .populate('instructor', 'name email')
+        .sort({ createdAt: -1 });
+    }
+    
+    res.json(classrooms);
+  } catch (error) {
+    console.error('Fetch classrooms error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // 📌 Create Classroom
 router.post('/create', auth, instructorOnly, upload.single('excelFile'), async (req, res) => {
   try {

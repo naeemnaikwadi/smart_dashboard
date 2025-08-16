@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getCurrentUser, getAuthHeaders } from '../utils/auth';
 import DashboardLayout from '../components/DashboardLayout';
 import CourseRating from '../components/CourseRating';
+import { MessageCircle, Plus } from 'lucide-react';
 
 const CourseDetail = () => {
   const { id: courseId } = useParams();
@@ -252,12 +253,23 @@ const CourseDetail = () => {
               Classroom: {course?.classroom?.name} | Instructor: {course?.instructor?.name}
             </p>
           </div>
-          <button
-            onClick={() => navigate(-1)}
-            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
-          >
-            Back
-          </button>
+          <div className="flex gap-3">
+            {!isInstructor && (
+              <button
+                onClick={() => navigate(`/course/${courseId}/doubts`)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+              >
+                <MessageCircle size={18} />
+                Ask Doubt
+              </button>
+            )}
+            <button
+              onClick={() => navigate(-1)}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
+            >
+              Back
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -274,33 +286,44 @@ const CourseDetail = () => {
 
         {/* Tab Navigation */}
         <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-          <nav className="-mb-px flex space-x-8">
+          <nav className="flex space-x-8">
             <button
               onClick={() => setActiveTab('materials')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'materials'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
               }`}
             >
-              Course Materials ({course?.materials?.length || 0})
+              Materials
             </button>
             <button
-              onClick={() => setActiveTab('sessions')}
+              onClick={() => setActiveTab('live-sessions')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'sessions'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                activeTab === 'live-sessions'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
               }`}
             >
-              Live Sessions ({course?.liveSessions?.length || 0})
+              Live Sessions
             </button>
+            <button
+              onClick={() => setActiveTab('learning-paths')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'learning-paths'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              Learning Paths
+            </button>
+            {/* Ratings tab remains accessible from course page only; removed from layout */}
             <button
               onClick={() => setActiveTab('ratings')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'ratings'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
               }`}
             >
               Ratings & Reviews
@@ -463,7 +486,7 @@ const CourseDetail = () => {
         )}
 
         {/* Live Sessions Tab */}
-        {activeTab === 'sessions' && (
+        {activeTab === 'live-sessions' && (
           <div>
             {isInstructor && (
               <div className="mb-6">
@@ -633,6 +656,79 @@ const CourseDetail = () => {
           </div>
         )}
 
+        {/* Learning Paths Tab */}
+        {activeTab === 'learning-paths' && (
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-gray-800 dark:text-white">
+                Learning Paths
+              </h3>
+              {isInstructor && (
+                <button
+                  onClick={() => navigate('/create-learning-path', { state: { selectedCourse: courseId } })}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                >
+                  <Plus size={18} />
+                  Create Learning Path
+                </button>
+              )}
+            </div>
+            
+            {/* Learning Paths List */}
+            <div className="space-y-4">
+              {course?.learningPaths?.length > 0 ? (
+                course.learningPaths.map((path) => (
+                  <div key={path._id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <h4 className="text-lg font-semibold text-gray-800 dark:text-white">
+                          {path.title}
+                        </h4>
+                        <p className="text-gray-600 dark:text-gray-300 mt-1">
+                          {path.description}
+                        </p>
+                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                          <span>📚 {path.totalSteps || 0} steps</span>
+                          <span>⏱️ {path.estimatedTotalTime || 0} min</span>
+                          <span>👥 {path.learners?.length || 0} learners</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        {!isInstructor && (
+                          <button
+                            onClick={() => navigate(`/learning-session/${path._id}`)}
+                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
+                          >
+                            Start Learning
+                          </button>
+                        )}
+                        {isInstructor && (
+                          <button
+                            onClick={() => navigate(`/edit-learning-path/${path._id}`)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <p>No learning paths created yet for this course.</p>
+                  {isInstructor && (
+                    <p className="mt-2">Click "Create Learning Path" to build a step-by-step learning journey for your students.</p>
+                  )}
+                  {!isInstructor && (
+                    <p className="mt-2">Your instructor will create learning paths for this course soon.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Ratings Tab */}
         {activeTab === 'ratings' && (
           <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow">
@@ -654,3 +750,4 @@ const CourseDetail = () => {
 };
 
 export default CourseDetail;
+

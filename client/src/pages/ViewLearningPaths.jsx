@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Clock, Users, Play, CheckCircle, ArrowRight, FileText, Video, Link, X, Target, Plus, Filter, Eye } from 'lucide-react';
+import { BookOpen, Clock, Users, Play, CheckCircle, ArrowRight, FileText, Video, Link, X, Target, Plus, Filter, Eye, Award } from 'lucide-react';
 import DashboardLayout from '../components/DashboardLayout';
 import DocumentViewer from '../components/DocumentViewer';
+import StepWiseAssessment from '../components/StepWiseAssessment';
 import { fetchAllLearningPaths, updateProgress } from '../services/learningPathService';
 
 const ViewLearningPaths = () => {
@@ -18,6 +19,9 @@ const ViewLearningPaths = () => {
   const [userId, setUserId] = useState('');
   const [showDocumentViewer, setShowDocumentViewer] = useState(false);
   const [selectedDocuments, setSelectedDocuments] = useState([]);
+  const [showAssessment, setShowAssessment] = useState(false);
+  const [selectedPathForAssessment, setSelectedPathForAssessment] = useState(null);
+  const [assessmentResults, setAssessmentResults] = useState({});
 
   useEffect(() => {
     loadUserData();
@@ -191,11 +195,13 @@ const ViewLearningPaths = () => {
     try {
       setLoading(true);
       const response = await fetchAllLearningPaths();
-      if (response.success) {
+      console.log('Learning paths response:', response);
+      
+      if (response && response.data) {
         setPaths(response.data || []);
         console.log('Learning paths loaded:', response.data);
       } else {
-        setError(response.message || 'Failed to load learning paths');
+        setError('Failed to load learning paths');
       }
     } catch (error) {
       console.error('Error loading learning paths:', error);
@@ -213,7 +219,7 @@ const ViewLearningPaths = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ topic })
+        body: JSON.stringify({ topic: topic || 'Learning Session' })
       });
 
       if (response.ok) {
@@ -225,6 +231,50 @@ const ViewLearningPaths = () => {
       console.error('Error starting learning session:', error);
       setError('Failed to start learning session');
     }
+  };
+
+  const startAssessment = (learningPath) => {
+    setSelectedPathForAssessment(learningPath);
+    setShowAssessment(true);
+  };
+
+  const handleAssessmentComplete = async (results) => {
+    try {
+      // Save assessment results
+      setAssessmentResults(prev => ({
+        ...prev,
+        [results.learningPathId]: results
+      }));
+
+      // Update learning path progress
+      const progressUpdate = {
+        learningPathId: results.learningPathId,
+        assessmentCompleted: true,
+        assessmentScore: calculateAssessmentScore(results),
+        timeSpent: results.timeSpent,
+        completedAt: results.completedAt
+      };
+
+      await updateProgress(progressUpdate);
+      
+      // Show success message
+      setError('');
+      setShowAssessment(false);
+      setSelectedPathForAssessment(null);
+      
+      // Refresh learning paths
+      loadLearningPaths();
+    } catch (error) {
+      console.error('Error saving assessment results:', error);
+      setError('Failed to save assessment results');
+    }
+  };
+
+  const calculateAssessmentScore = (results) => {
+    // Simple scoring based on questions answered
+    const totalQuestions = Object.keys(results.answers).length;
+    const answeredQuestions = Object.values(results.answers).filter(answer => answer && answer.toString().trim() !== '').length;
+    return Math.round((answeredQuestions / totalQuestions) * 100);
   };
 
   const getResourceIcon = (type) => {
@@ -356,33 +406,17 @@ const ViewLearningPaths = () => {
         )}
 
         {/* Debug Info - Remove in production */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mb-6 p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
-            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Debug Info:</h3>
-            <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-              <div>User Role: {userRole}</div>
-              <div>User ID: {userId}</div>
-              <div>Total Courses: {allCourses.length}</div>
-              <div>Total Learning Paths: {paths.length}</div>
-              <div>Selected Course Filter: {selectedCourseFilter}</div>
-              <div>Courses: {allCourses.map(c => c.name).join(', ')}</div>
-            </div>
-            <div className="mt-3 space-x-2">
-              <button
-                onClick={loadAllCourses}
-                className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
-              >
-                Reload Courses
-              </button>
-              <button
-                onClick={loadLearningPaths}
-                className="px-3 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600"
-              >
-                Reload Learning Paths
-              </button>
-            </div>
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 mb-6">
+          <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">Debug Info - Remove in production</h4>
+          <div className="grid grid-cols-2 gap-2 text-sm text-yellow-700 dark:text-yellow-300">
+            <div>User Role: {userRole}</div>
+            <div>User ID: {userId}</div>
+            <div>Total Courses: {allCourses.length}</div>
+            <div>Total Learning Paths: {paths.length}</div>
+            <div>Selected Course Filter: {selectedCourseFilter}</div>
+            <div>Courses: {allCourses.length > 0 ? allCourses.map(c => c.name).join(', ') : 'None'}</div>
           </div>
-        )}
+        </div>
 
         {/* Courses Sections */}
         <div className="space-y-8">
@@ -504,13 +538,24 @@ const ViewLearningPaths = () => {
                               {/* Action Buttons */}
                               <div className="p-4 border-t border-gray-200 dark:border-gray-600">
                                 {userRole === 'student' ? (
-                                  <button
-                                    onClick={() => startLearningSession(path._id)}
-                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
-                                  >
-                                    <Play className="w-4 h-4" />
-                                    {progress > 0 ? 'Continue Learning' : 'Start Learning'}
-                                  </button>
+                                  <div className="space-y-2">
+                                    <button
+                                      onClick={() => startLearningSession(path._id, path.title)}
+                                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                                    >
+                                      <Play className="w-4 h-4" />
+                                      {progress > 0 ? 'Continue Learning' : 'Start Learning'}
+                                    </button>
+                                    
+                                    {/* Assessment Button */}
+                                    <button
+                                      onClick={() => startAssessment(path)}
+                                      className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                                    >
+                                      <Award className="w-4 h-4" />
+                                      Take Assessment
+                                    </button>
+                                  </div>
                                 ) : (
                                   <div className="flex gap-2">
                                     <button
@@ -595,6 +640,36 @@ const ViewLearningPaths = () => {
               setSelectedDocuments([]);
             }}
           />
+        )}
+
+        {/* Assessment Modal */}
+        {showAssessment && selectedPathForAssessment && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-6xl relative max-h-[90vh] overflow-y-auto">
+              <div className="sticky top-0 bg-white dark:bg-gray-900 p-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">
+                    Assessment: {selectedPathForAssessment.title}
+                  </h2>
+                  <button
+                    onClick={() => {
+                      setShowAssessment(false);
+                      setSelectedPathForAssessment(null);
+                    }}
+                    className="text-gray-500 hover:text-gray-800 dark:hover:text-white text-xl"
+                  >
+                    &times;
+                  </button>
+                </div>
+              </div>
+              
+              <StepWiseAssessment
+                learningPath={selectedPathForAssessment}
+                onComplete={handleAssessmentComplete}
+                userProgress={userProgress}
+              />
+            </div>
+          </div>
         )}
       </div>
     </DashboardLayout>

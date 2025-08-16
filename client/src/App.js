@@ -34,6 +34,12 @@ import Profile from './pages/Profile';
 import StudentDownloads from './pages/StudentDownloads';
 import StudentLiveSessions from './pages/StudentLiveSessions';
 import StudentCourses from './pages/StudentCourses';
+import InstructorDoubts from './pages/InstructorDoubts';
+import StudentDoubts from './pages/StudentDoubts';
+import CourseDoubts from './pages/CourseDoubts';
+import Notifications from './pages/Notifications';
+import AssessmentDashboard from './pages/AssessmentDashboard';
+import InstructorReviews from './pages/InstructorReviews';
 
 function App() {
   return (
@@ -172,6 +178,14 @@ function App() {
           }
         />
         <Route
+          path="/instructor/reviews"
+          element={
+            <ProtectedRoute role="instructor">
+              <InstructorReviews />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/student"
           element={
             <ProtectedRoute role="student">
@@ -241,6 +255,52 @@ function App() {
           element={
             <ProtectedRoute>
               <LiveSessionRoom />
+            </ProtectedRoute>
+          }
+        />
+        
+        {/* Doubt Routes */}
+        <Route
+          path="/instructor/doubts"
+          element={
+            <ProtectedRoute role="instructor">
+              <InstructorDoubts />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student/doubts"
+          element={
+            <ProtectedRoute role="student">
+              <StudentDoubts />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/course/:courseId/doubts"
+          element={
+            <ProtectedRoute role="student">
+              <CourseDoubts />
+            </ProtectedRoute>
+          }
+        />
+        
+        {/* Notification Routes */}
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute>
+              <Notifications />
+            </ProtectedRoute>
+          }
+        />
+        
+        {/* Assessment Routes */}
+        <Route
+          path="/assessments"
+          element={
+            <ProtectedRoute role="student">
+              <AssessmentDashboard />
             </ProtectedRoute>
           }
         />

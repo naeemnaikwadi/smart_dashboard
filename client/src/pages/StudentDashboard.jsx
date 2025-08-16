@@ -9,7 +9,7 @@ import StudentActionButtons from '../components/StudentActionButtons';
 import TimeSpentChart from '../components/charts/TimeSpentChart';
 import ImprovementGraph from '../components/charts/ImprovementGraph';
 
-import { BookOpen, Users, Star, Target, Clock, TrendingUp, RefreshCw, Edit3, Camera, Save, X, ArrowRight, FileText, Video } from 'lucide-react';
+import { BookOpen, Users, Star, Target, Clock, TrendingUp, RefreshCw, Edit3, Camera, Save, X, ArrowRight, FileText, Video, Award } from 'lucide-react';
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
@@ -79,11 +79,14 @@ export default function StudentDashboard() {
   const fetchStudentStats = useCallback(async () => {
     try {
       // Fetch student-specific stats from various endpoints with better error handling
-      const [coursesRes, progressRes] = await Promise.allSettled([
+      const [coursesRes, progressRes, liveSessionsRes] = await Promise.allSettled([
         axios.get('http://localhost:4000/api/courses/enrolled', {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         }),
         axios.get('http://localhost:4000/api/progress/student', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        }),
+        axios.get('http://localhost:4000/api/live-sessions', {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         })
       ]);
@@ -94,6 +97,15 @@ export default function StudentDashboard() {
         courses = coursesRes.value.data;
       } else {
         console.warn('Courses API failed:', coursesRes.reason?.response?.status);
+        // Try alternative endpoint
+        try {
+          const altResponse = await axios.get('http://localhost:4000/api/courses', {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+          courses = altResponse.data || [];
+        } catch (altError) {
+          console.warn('Alternative courses API also failed:', altError);
+        }
       }
 
       // Handle progress response
@@ -102,6 +114,14 @@ export default function StudentDashboard() {
         progress = progressRes.value.data;
       } else {
         console.warn('Progress API failed:', progressRes.reason?.response?.status);
+      }
+
+      // Handle live sessions response
+      let liveSessions = [];
+      if (liveSessionsRes.status === 'fulfilled' && liveSessionsRes.value?.data) {
+        liveSessions = liveSessionsRes.value.data;
+      } else {
+        console.warn('Live sessions API failed:', liveSessionsRes.reason?.response?.status);
       }
 
       // Calculate progress level based on average progress with null checks
@@ -120,7 +140,7 @@ export default function StudentDashboard() {
       setStudentStats({
         coursesEnrolled: courses?.length || 0,
         certificatesEarned: Math.floor((learningPathStats?.completedPaths || 0) * 0.7), // Simulate certificates
-        liveSessionsAttended: Math.floor(Math.random() * 10) + 5, // Placeholder
+        liveSessionsAttended: liveSessions?.length || 0,
         progressLevel,
         totalStudyTime,
         averageSessionTime
@@ -131,7 +151,7 @@ export default function StudentDashboard() {
       setStudentStats({
         coursesEnrolled: 0,
         certificatesEarned: 0,
-        liveSessionsAttended: 5,
+        liveSessionsAttended: 0,
         progressLevel: 'Beginner',
         totalStudyTime: 0,
         averageSessionTime: 0
@@ -457,6 +477,46 @@ export default function StudentDashboard() {
                   <span className="font-semibold text-gray-900 dark:text-white">{formatTime(learningPathStats?.totalTimeSpent || 0)}</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Assessments Quick Access */}
+        <section className="mb-8">
+          <h2 className="text-xl font-semibold text-gray-700 dark:text-white mb-4">Assessments</h2>
+          <div className="bg-white dark:bg-gray-800 shadow-md rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Track Your Progress</h3>
+              <Award className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                <div className="text-2xl font-bold text-purple-600 mb-1">
+                  {learningPathStats?.totalPaths || 0}
+                </div>
+                <div className="text-sm text-purple-600">Available Assessments</div>
+              </div>
+              <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                <div className="text-2xl font-bold text-green-600 mb-1">
+                  {learningPathStats?.completedPaths || 0}
+                </div>
+                <div className="text-sm text-green-600">Completed</div>
+              </div>
+              <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600 mb-1">
+                  {(learningPathStats?.averageProgress || 0).toFixed(0)}%
+                </div>
+                <div className="text-sm text-blue-600">Average Score</div>
+              </div>
+            </div>
+            <div className="mt-4">
+              <button
+                onClick={() => navigate('/assessments')}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors"
+              >
+                <Award className="w-4 h-4" />
+                View Assessment Dashboard
+              </button>
             </div>
           </div>
         </section>

@@ -5,13 +5,37 @@ const Progress = require('../models/Progress');
 const Classroom = require('../models/Classroom');
 const Course = require('../models/Course');
 const { auth, instructorOnly } = require('../middleware/auth');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, '../uploads/learning-paths');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
+});
 
 // @route   POST api/learning-paths
 // @desc    Create a learning path for a specific course (instructor only)
 // @access  Private (Instructor)
-router.post('/', auth, instructorOnly, async (req, res) => {
+router.post('/', auth, instructorOnly, upload.any(), async (req, res) => {
   try {
-    const { title, description, estimatedTime, resources, courseId } = req.body;
+    const { title, description, courseId, steps } = req.body;
     
     // Check if course exists and instructor owns it
     const course = await Course.findById(courseId);
@@ -26,14 +50,68 @@ router.post('/', auth, instructorOnly, async (req, res) => {
     // Get classroomId from course
     const classroomId = course.classroom;
 
+    // Parse steps if it's a string
+    let parsedSteps = steps;
+    if (typeof steps === 'string') {
+      try {
+        parsedSteps = JSON.parse(steps);
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid steps format' });
+      }
+    }
+
+    // Validate steps
+    if (!Array.isArray(parsedSteps) || parsedSteps.length === 0) {
+      return res.status(400).json({ error: 'At least one step is required' });
+    }
+
+    // Process file uploads for each step
+    const processedSteps = await Promise.all(parsedSteps.map(async (step, stepIndex) => {
+      const processedStep = {
+        title: step.title,
+        description: step.description,
+        order: step.order,
+        estimatedTime: step.estimatedTime || 30,
+        resources: []
+      };
+
+      // Process resources for this step
+      if (step.resources && Array.isArray(step.resources)) {
+        for (let resourceIndex = 0; resourceIndex < step.resources.length; resourceIndex++) {
+          const resource = step.resources[resourceIndex];
+          const processedResource = {
+            title: resource.title,
+            type: resource.type,
+            description: resource.description
+          };
+
+          // Handle file uploads
+          if (resource.type !== 'link' && req.files) {
+            const fileKey = `step_${stepIndex}_resource_${resourceIndex}`;
+            const uploadedFile = req.files.find(file => file.fieldname === fileKey);
+            
+            if (uploadedFile) {
+              processedResource.uploadedFile = uploadedFile.path.replace(/\\/g, '/').replace('uploads/', '/uploads/');
+              processedResource.fileSize = uploadedFile.size;
+            }
+          } else if (resource.type === 'link') {
+            processedResource.link = resource.link;
+          }
+
+          processedStep.resources.push(processedResource);
+        }
+      }
+
+      return processedStep;
+    }));
+
     const path = await LearningPath.create({ 
       title, 
       description, 
-      estimatedTime,
-      resources,
       instructorId: req.user.id,
       classroomId,
-      courseId
+      courseId,
+      steps: processedSteps
     });
     
     res.status(201).json(path);
@@ -55,12 +133,11 @@ router.get('/', auth, async (req, res) => {
       paths = await LearningPath.find({ instructorId: req.user.id })
         .populate('instructorId', 'name email')
         .populate('classroomId', 'name description')
-        .populate('courseId', 'name description')
-        .populate('resources');
+        .populate('courseId', 'name description');
     } else {
       // Students see learning paths only for courses they're enrolled in
       const enrolledClassrooms = await Classroom.find({
-        'students.studentId': req.user.id
+        students: req.user.id
       });
       
       const classroomIds = enrolledClassrooms.map(c => c._id);
@@ -78,8 +155,7 @@ router.get('/', auth, async (req, res) => {
       })
         .populate('instructorId', 'name email')
         .populate('classroomId', 'name description')
-        .populate('courseId', 'name description')
-        .populate('resources');
+        .populate('courseId', 'name description');
     }
     
     res.json(paths);
@@ -112,7 +188,7 @@ router.get('/course/:courseId', auth, async (req, res) => {
         return res.status(404).json({ error: 'Classroom not found' });
       }
       
-      const isEnrolled = classroom.students.some(student => student.studentId.toString() === req.user.id);
+      const isEnrolled = classroom.students.map(id => id.toString()).includes(req.user.id);
       if (!isEnrolled) {
         return res.status(403).json({ error: 'Access denied. You are not enrolled in this course.' });
       }
@@ -124,8 +200,7 @@ router.get('/course/:courseId', auth, async (req, res) => {
     })
       .populate('instructorId', 'name email')
       .populate('classroomId', 'name description')
-      .populate('courseId', 'name description')
-      .populate('resources');
+      .populate('courseId', 'name description');
     
     res.json(paths);
   } catch (err) {
@@ -148,8 +223,8 @@ router.get('/classroom/:classroomId', auth, async (req, res) => {
     }
     
     // Check if user is instructor or enrolled student
-    const isInstructor = classroom.instructorId.toString() === req.user.id;
-    const isEnrolled = classroom.students.some(student => student.studentId.toString() === req.user.id);
+    const isInstructor = classroom.instructor.toString() === req.user.id;
+    const isEnrolled = classroom.students.includes(req.user.id);
     
     if (!isInstructor && !isEnrolled) {
       return res.status(403).json({ error: 'Access denied. You are not enrolled in this classroom.' });
@@ -161,8 +236,7 @@ router.get('/classroom/:classroomId', auth, async (req, res) => {
     })
       .populate('instructorId', 'name email')
       .populate('classroomId', 'name description')
-      .populate('courseId', 'name description')
-      .populate('resources');
+      .populate('courseId', 'name description');
     
     res.json(paths);
   } catch (err) {
@@ -179,8 +253,7 @@ router.get('/:id', auth, async (req, res) => {
     const path = await LearningPath.findById(req.params.id)
       .populate('instructorId', 'name email')
       .populate('classroomId', 'name description')
-      .populate('courseId', 'name description')
-      .populate('resources');
+      .populate('courseId', 'name description');
     
     if (!path) {
       return res.status(404).json({ error: 'Learning path not found' });
@@ -201,7 +274,7 @@ router.get('/:id', auth, async (req, res) => {
         return res.status(404).json({ error: 'Classroom not found' });
       }
       
-      const isEnrolled = classroom.students.some(student => student.studentId.toString() === req.user.id);
+      const isEnrolled = classroom.students.includes(req.user.id);
       if (!isEnrolled) {
         return res.status(403).json({ error: 'Access denied. You are not enrolled in this course.' });
       }
@@ -293,7 +366,7 @@ router.post('/:id/start-session', auth, async (req, res) => {
         return res.status(404).json({ error: 'Classroom not found' });
       }
       
-      const isEnrolled = classroom.students.some(student => student.studentId.toString() === req.user.id);
+      const isEnrolled = classroom.students.includes(req.user.id);
       if (!isEnrolled) {
         return res.status(403).json({ error: 'Access denied. You are not enrolled in this course.' });
       }
@@ -430,8 +503,7 @@ router.get('/instructor/:instructorId', auth, instructorOnly, async (req, res) =
     const paths = await LearningPath.find({ instructorId: req.user.id })
       .populate('instructorId', 'name email')
       .populate('classroomId', 'name description')
-      .populate('courseId', 'name description')
-      .populate('resources');
+      .populate('courseId', 'name description');
     
     res.json(paths);
   } catch (err) {

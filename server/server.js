@@ -7,15 +7,7 @@ const { Server } = require('socket.io');
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
-const liveSessionRoutes = require('./routes/liveSession');
-app.use('/api/live-sessions', liveSessionRoutes);
-
-const livekitRoutes = require('./routes/livekit');
-app.use('/api/livekit', livekitRoutes);
-
-const instructorRoutes = require('./routes/instructorRoutes');
-app.use('/api/instructor', instructorRoutes);
-
+// Socket.io event handlers
 io.on('connection', (socket) => {
   console.log('✅ A user connected:', socket.id);
 

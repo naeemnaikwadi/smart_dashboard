@@ -46,6 +46,11 @@ app.use('/api/courses', require('./routes/courses'));
 app.use('/api/classrooms', require('./routes/classrooms'));
 app.use('/api/student', require('./routes/student')); // Student routes
 app.use('/api/upload', require('./routes/fileUpload')); // File upload routes
+app.use('/api/doubts', require('./routes/doubts')); // Doubt routes
+app.use('/api/notifications', require('./routes/notifications')); // Notification routes
+app.use('/api/progress', require('./routes/progress')); // Progress routes
+app.use('/api/live-sessions', require('./routes/liveSession')); // Live session routes
+app.use('/api/quizzes', require('./routes/quizRoutes')); // Quiz routes
 
 // Test route
 app.get('/test', (req, res) => {

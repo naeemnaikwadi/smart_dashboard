@@ -45,7 +45,7 @@ export const fetchLearningPathsByInstructor = async (instructorId) => {
 // Update progress for a learning path
 export const updateProgress = async (data) => {
   const token = localStorage.getItem('token');
-  return axios.put(`${API}/${data.pathId}/update-progress`, data, {
+  return axios.put(`${API}/${data.learningPathId || data.pathId}/update-progress`, data, {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'

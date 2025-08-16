@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import DashboardLayout from '../components/DashboardLayout';
+import { MessageCircle } from 'lucide-react';
 
 const StudentClassroomDetail = () => {
   const { classroomId } = useParams();
@@ -88,12 +89,21 @@ const StudentClassroomDetail = () => {
                     <p className="text-gray-600 dark:text-gray-300">{course.description}</p>
                     <p className="text-sm text-gray-500">Date: {new Date(course.date).toLocaleDateString()}</p>
                   </div>
-                  <button
-                    onClick={() => navigate(`/course/${course._id}`)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
-                  >
-                    Open
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => navigate(`/course/${course._id}/doubts`)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
+                    >
+                      <MessageCircle size={16} />
+                      Doubt
+                    </button>
+                    <button
+                      onClick={() => navigate(`/course/${course._id}`)}
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
+                    >
+                      Open
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

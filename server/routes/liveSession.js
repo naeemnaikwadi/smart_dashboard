@@ -4,11 +4,67 @@ const router = express.Router();
 const LiveSession = require('../models/LiveSession');
 const { auth, instructorOnly } = require('../middleware/auth');
 const Classroom = require('../models/Classroom');
+const mongoose = require('mongoose');
+
+// Get all live sessions for the user (based on role)
+router.get('/', auth, async (req, res) => {
+  try {
+    let sessions;
+    
+    if (req.user.role === 'instructor') {
+      // Instructors see all sessions they created
+      sessions = await LiveSession.find({ instructor: req.user.id })
+        .populate('instructor', 'name email')
+        .populate('classroom', 'name')
+        .populate('courseId', 'name')
+        .sort({ date: 1 });
+    } else {
+      // Students see sessions from classrooms they're enrolled in
+      const enrolledClassrooms = await Classroom.find({
+        students: req.user.id
+      });
+      
+      const classroomIds = enrolledClassrooms.map(c => c._id);
+      
+      sessions = await LiveSession.find({
+        classroom: { $in: classroomIds }
+      })
+        .populate('instructor', 'name email')
+        .populate('classroom', 'name')
+        .populate('courseId', 'name')
+        .sort({ date: 1 });
+    }
+    
+    res.json(sessions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch sessions' });
+  }
+});
+
+// Get live sessions for an instructor explicitly (for UI that calls this path)
+router.get('/instructor/:instructorId', auth, instructorOnly, async (req, res) => {
+  try {
+    const { instructorId } = req.params;
+    if (instructorId !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const sessions = await LiveSession.find({ instructor: instructorId })
+      .populate('instructor', 'name email')
+      .populate('classroom', 'name')
+      .populate('courseId', 'name')
+      .sort({ date: 1 });
+    res.json(sessions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch sessions' });
+  }
+});
 
 // Create session (Instructor)
 router.post('/', auth, instructorOnly, async (req, res) => {
   try {
-    const { title, description, date, classroomId } = req.body;
+    const { title, description, date, classroomId, courseId } = req.body;
     if (!title || !date || !classroomId) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -22,8 +78,9 @@ router.post('/', auth, instructorOnly, async (req, res) => {
       description,
       date,
       instructor,
-      link,
       classroom: classroomId,
+      courseId,
+      link,
     });
 
     await session.save();

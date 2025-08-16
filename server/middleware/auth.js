@@ -8,6 +8,14 @@ const instructorOnly = (req, res, next) => {
   }
 };
 
+const studentOnly = (req, res, next) => {
+  if (req.user && req.user.role === 'student') {
+    next();
+  } else {
+    res.status(403).json({ message: 'Access denied. Student role required.' });
+  }
+};
+
 const auth = function(req, res, next) {
   // Get token from header
   let token = req.header('Authorization');
@@ -32,4 +40,4 @@ const auth = function(req, res, next) {
   }
 };
 
-module.exports = { auth, instructorOnly };
+module.exports = { auth, instructorOnly, studentOnly };

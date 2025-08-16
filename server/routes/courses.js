@@ -58,6 +58,36 @@ router.post('/', auth, instructorOnly, async (req, res) => {
   }
 });
 
+// @route   GET api/courses/enrolled
+// @desc    Get all courses that a student is enrolled in
+// @access  Private (Student)
+router.get('/enrolled', auth, async (req, res) => {
+    try {
+        // Get classrooms where student is enrolled (explicit projection to avoid heavy docs)
+        const enrolledClassrooms = await Classroom.find(
+            { students: req.user.id },
+            { _id: 1 }
+        );
+
+        if (!enrolledClassrooms || enrolledClassrooms.length === 0) {
+            return res.json([]);
+        }
+
+        const classroomIds = enrolledClassrooms.map(c => c._id);
+
+        // Get courses in those classrooms
+        const courses = await Course.find({ classroom: { $in: classroomIds }})
+            .populate('instructor', 'name email')
+            .populate('classroom', 'name')
+            .sort({ date: -1 });
+
+        res.json(Array.isArray(courses) ? courses : []);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
 // @route   GET api/courses/classroom/:classroomId
 // @desc    Get all courses for a classroom (for both instructor and students)
 // @access  Private
@@ -112,7 +142,18 @@ router.get('/:id', auth, async (req, res) => {
             return res.status(403).json({ message: 'Access denied' });
         }
         
-        res.json(course);
+        // Get learning paths for this course
+        const LearningPath = require('../models/LearningPath');
+        const learningPaths = await LearningPath.find({ 
+            courseId: course._id,
+            isActive: true 
+        }).select('title description totalSteps estimatedTotalTime learners');
+        
+        // Add learning paths to course object
+        const courseWithPaths = course.toObject();
+        courseWithPaths.learningPaths = learningPaths;
+        
+        res.json(courseWithPaths);
     } catch (err) {
         console.error(err.message);
         res.status(500).send('Server Error');
@@ -341,9 +382,14 @@ router.post('/:courseId/rate', auth, async (req, res) => {
       return res.status(404).json({ error: 'Course not found' });
     }
 
-    // Check if student is enrolled in the course
-    if (!course.studentsEnrolled.includes(studentId)) {
-      return res.status(403).json({ error: 'You must be enrolled in this course to rate it' });
+    // Check if student is enrolled in the classroom that contains this course
+    const classroom = await Classroom.findById(course.classroom);
+    if (!classroom) {
+      return res.status(404).json({ error: 'Classroom not found' });
+    }
+
+    if (!classroom.students.includes(studentId)) {
+      return res.status(403).json({ error: 'You must be enrolled in this classroom to rate courses in it' });
     }
 
     // Check if student has already rated this course
@@ -390,11 +436,14 @@ router.get('/:courseId/ratings', auth, async (req, res) => {
       return res.status(404).json({ error: 'Course not found' });
     }
 
-    res.json({
-      ratings: course.ratings,
-      averageRating: course.averageRating,
-      totalRatings: course.totalRatings
-    });
+    // Transform ratings to include userName for frontend compatibility
+    const transformedRatings = course.ratings.map(rating => ({
+      ...rating.toObject(),
+      userName: rating.studentId?.name || 'Anonymous',
+      createdAt: rating.createdAt
+    }));
+
+    res.json(transformedRatings);
   } catch (error) {
     console.error('Error fetching course ratings:', error);
     res.status(500).json({ error: 'Failed to fetch ratings' });

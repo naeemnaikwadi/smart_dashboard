@@ -4,7 +4,7 @@ const User = require('../models/User');
 const Classroom = require('../models/Classroom');
 const Course = require('../models/Course');
 const Progress = require('../models/Progress');
-const { auth, instructorOnly } = require('../middleware/auth');
+const { auth, instructorOnly, studentOnly } = require('../middleware/auth');
 
 // Get all students with their information (instructor only)
 router.get('/info', auth, instructorOnly, async (req, res) => {
@@ -145,6 +145,21 @@ router.get('/classroom/:classroomId', auth, instructorOnly, async (req, res) => 
   } catch (error) {
     console.error('Error fetching classroom students:', error);
     res.status(500).json({ message: 'Failed to fetch classroom students' });
+  }
+});
+
+// GET /api/student/courses
+router.get('/courses', auth, studentOnly, async (req, res) => {
+  try {
+    const courses = await Course.find({ studentsEnrolled: req.user.id })
+      .populate('classroom', 'name')
+      .populate('instructor', 'name')
+      .sort({ createdAt: -1 });
+
+    res.json({ courses });
+  } catch (error) {
+    console.error('Error fetching student courses:', error);
+    res.status(500).json({ error: 'Failed to fetch courses' });
   }
 });
 

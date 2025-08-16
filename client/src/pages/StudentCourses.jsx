@@ -84,82 +84,35 @@ const StudentCourses = () => {
       setError('');
 
       const token = localStorage.getItem('token');
-      
-      // Try to load courses from the API
-      const response = await fetch('http://localhost:4000/api/courses', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const allCourses = await response.json();
-        
-        // Filter courses by enrolled classrooms
-        const enrolledCourses = allCourses.filter(course => 
-          classrooms.some(classroom => 
-            classroom.courses?.some(c => c.toString() === course._id?.toString())
-          )
+      // Prefer reliable fetch: build from enrolled classrooms to courses
+      if (classrooms.length > 0) {
+        const results = await Promise.all(
+          classrooms.map(async (c) => {
+            try {
+              const res = await fetch(`http://localhost:4000/api/courses/classroom/${c._id}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+              });
+              if (res.ok) {
+                return await res.json();
+              }
+              return [];
+            } catch (e) {
+              return [];
+            }
+          })
         );
-
-        // Add mock data for demonstration if no real courses exist
-        if (enrolledCourses.length === 0) {
-          const mockCourses = generateMockCourses();
-          setCourses(mockCourses);
-        } else {
-          setCourses(enrolledCourses);
-        }
+        const merged = results.flat();
+        setCourses(merged);
       } else {
-        console.warn('Failed to load courses:', response.status);
-        // Generate mock data if API fails
-        const mockCourses = generateMockCourses();
-        setCourses(mockCourses);
+        setCourses([]);
       }
     } catch (error) {
       console.error('Error loading courses:', error);
-      // Generate mock data if API fails
-      const mockCourses = generateMockCourses();
-      setCourses(mockCourses);
+      setError('Failed to load courses. Please check your connection and try again.');
+      setCourses([]);
     } finally {
       setLoading(false);
     }
-  };
-
-  const generateMockCourses = () => {
-    const mockCourses = [];
-    const subjects = ['Mathematics', 'Science', 'English', 'History', 'Computer Science', 'Physics', 'Chemistry', 'Biology'];
-    const levels = ['Beginner', 'Intermediate', 'Advanced'];
-    
-    for (let i = 1; i <= 15; i++) {
-      const subject = subjects[Math.floor(Math.random() * subjects.length)];
-      const level = levels[Math.floor(Math.random() * levels.length)];
-      const classroom = classrooms[Math.floor(Math.random() * classrooms.length)] || { name: 'General Class' };
-      const instructor = `Instructor ${Math.floor(Math.random() * 5) + 1}`;
-      const progress = Math.floor(Math.random() * 100);
-      const rating = (Math.random() * 2 + 3).toFixed(1); // 3.0 to 5.0
-      
-      mockCourses.push({
-        id: i,
-        title: `${subject} - ${level} Level`,
-        description: `Comprehensive ${subject.toLowerCase()} course designed for ${level.toLowerCase()} learners. Covers fundamental concepts and advanced topics.`,
-        instructor,
-        duration: Math.floor(Math.random() * 20 + 10), // 10-30 hours
-        lessons: Math.floor(Math.random() * 15 + 8), // 8-23 lessons
-        students: Math.floor(Math.random() * 50 + 20), // 20-70 students
-        rating: parseFloat(rating),
-        totalRatings: Math.floor(Math.random() * 100 + 20),
-        progress,
-        classroom: classroom.name,
-        category: subject,
-        level,
-        startDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000), // Random date within 30 days
-        lastAccessed: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000), // Random date within 7 days
-        certificate: progress >= 80,
-        featured: Math.random() > 0.7 // 30% chance of being featured
-      });
-    }
-
-    return mockCourses;
   };
 
   const getProgressColor = (progress) => {
@@ -182,26 +135,26 @@ const StudentCourses = () => {
   };
 
   const filteredCourses = courses.filter(course => {
-    const matchesSearch = course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         course.instructor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         course.category.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = course.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         course.instructor?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         course.description?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesClassroom = selectedClassroom === 'all' || course.classroom === selectedClassroom;
+    const matchesClassroom = selectedClassroom === 'all' || course.classroom?.name === selectedClassroom;
     const matchesStatus = selectedStatus === 'all' || 
-                         (selectedStatus === 'completed' && course.progress >= 80) ||
-                         (selectedStatus === 'in-progress' && course.progress > 0 && course.progress < 80) ||
-                         (selectedStatus === 'not-started' && course.progress === 0);
+                         (selectedStatus === 'completed' && (course.progress || 0) >= 80) ||
+                         (selectedStatus === 'in-progress' && (course.progress || 0) > 0 && (course.progress || 0) < 80) ||
+                         (selectedStatus === 'not-started' && (course.progress || 0) === 0);
     
     return matchesSearch && matchesClassroom && matchesStatus;
   });
 
   const getStats = () => {
     const total = courses.length;
-    const completed = courses.filter(c => c.progress >= 80).length;
-    const inProgress = courses.filter(c => c.progress > 0 && c.progress < 80).length;
-    const notStarted = courses.filter(c => c.progress === 0).length;
+    const completed = courses.filter(c => (c.progress || 0) >= 80).length;
+    const inProgress = courses.filter(c => (c.progress || 0) > 0 && (c.progress || 0) < 80).length;
+    const notStarted = courses.filter(c => (c.progress || 0) === 0).length;
     const averageProgress = courses.length > 0 ? 
-      courses.reduce((sum, c) => sum + c.progress, 0) / courses.length : 0;
+      courses.reduce((sum, c) => sum + (c.progress || 0), 0) / courses.length : 0;
     
     return { total, completed, inProgress, notStarted, averageProgress };
   };
@@ -368,28 +321,23 @@ const StudentCourses = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCourses.map((course) => (
-              <div key={course.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div key={course._id} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
                 <div className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-1 rounded-full ${getLevelColor(course.level)}`}>
-                        {course.level}
+                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                        Active
                       </span>
-                      {course.featured && (
-                        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
-                          Featured
-                        </span>
-                      )}
                     </div>
                     <div className="flex items-center gap-1">
                       <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                      <span className="text-sm font-medium">{course.rating}</span>
-                      <span className="text-xs text-gray-500">({course.totalRatings})</span>
+                      <span className="text-sm font-medium">{course.averageRating || 0}</span>
+                      <span className="text-xs text-gray-500">({course.totalRatings || 0})</span>
                     </div>
                   </div>
                   
                   <h3 className="font-semibold text-gray-900 dark:text-white mb-2 line-clamp-2">
-                    {course.title}
+                    {course.name}
                   </h3>
                   
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
@@ -399,19 +347,19 @@ const StudentCourses = () => {
                   <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4" />
-                      <span>{course.instructor}</span>
+                      <span>{course.instructor?.name || 'Unknown Instructor'}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4" />
-                      <span className="truncate">{course.classroom}</span>
+                      <span className="truncate">{course.classroom?.name || 'Unknown Classroom'}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4" />
-                      <span>{course.duration}h • {course.lessons} lessons</span>
+                      <span>{new Date(course.date).toLocaleDateString()}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4" />
-                      <span>{course.students} students enrolled</span>
+                      <span>{course.studentsEnrolled?.length || 0} students enrolled</span>
                     </div>
                   </div>
                   
@@ -419,59 +367,50 @@ const StudentCourses = () => {
                   <div className="mb-4">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Progress</span>
-                      <span className={`text-sm font-bold ${getProgressColor(course.progress)}`}>
-                        {course.progress}%
+                      <span className={`text-sm font-bold ${getProgressColor(course.progress || 0)}`}>
+                        {course.progress || 0}%
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                       <div 
                         className={`h-2 rounded-full transition-all duration-300 ${
-                          course.progress >= 80 ? 'bg-green-600' : 
-                          course.progress >= 50 ? 'bg-yellow-600' : 'bg-red-600'
+                          (course.progress || 0) >= 80 ? 'bg-green-600' : 
+                          (course.progress || 0) >= 50 ? 'bg-yellow-600' : 'bg-red-600'
                         }`}
-                        style={{ width: `${course.progress}%` }}
+                        style={{ width: `${course.progress || 0}%` }}
                       ></div>
                     </div>
                   </div>
                   
                   <div className="flex gap-2">
                     <button
-                      onClick={() => navigate(`/course/${course.id}`)}
+                      onClick={() => navigate(`/course/${course._id}`)}
                       className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm transition-colors flex items-center justify-center gap-2"
                     >
-                      {course.progress === 0 ? (
+                      {(course.progress || 0) === 0 ? (
                         <>
                           <Play className="w-4 h-4" />
                           Start Learning
                         </>
-                      ) : course.progress >= 80 ? (
+                      ) : (course.progress || 0) >= 80 ? (
                         <>
                           <Target className="w-4 h-4" />
                           Review Course
                         </>
                       ) : (
                         <>
-                          <Play className="w-4 h-4" />
+                          <BookOpen className="w-4 h-4" />
                           Continue Learning
                         </>
                       )}
                     </button>
-                    
                     <button
-                      onClick={() => navigate(`/course/${course.id}`)}
-                      className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm transition-colors"
+                      onClick={() => navigate(`/course/${course._id}`)}
+                      className="px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     >
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
-                  
-                  {course.certificate && (
-                    <div className="mt-3 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded text-center">
-                      <span className="text-sm text-green-800 dark:text-green-300 font-medium">
-                        🎉 Certificate Available!
-                      </span>
-                    </div>
-                  )}
                 </div>
               </div>
             ))}

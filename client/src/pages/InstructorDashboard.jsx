@@ -19,6 +19,7 @@ export default function InstructorDashboard() {
     activeLearners: 0,
     averageProgress: 0
   });
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -53,6 +54,8 @@ export default function InstructorDashboard() {
       console.error('Error fetching learning path stats:', err);
     }
   }, [instructorId]);
+
+
 
   const refreshAllData = async () => {
     setRefreshing(true);
@@ -248,6 +251,8 @@ export default function InstructorDashboard() {
             </div>
           </div>
         </section>
+
+
 
         {/* Action Buttons */}
         <section className="mb-8">
