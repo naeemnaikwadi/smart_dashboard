@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FileText, Download, Eye, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getCorrectFileUrl, downloadFile } from '../utils/fileUtils';
 
 const DocumentViewer = ({ documents, onClose }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -42,19 +43,18 @@ const DocumentViewer = ({ documents, onClose }) => {
   };
 
   const downloadDocument = () => {
-    const link = document.createElement('a');
-    link.href = `http://localhost:4000/uploads/${currentDocument.filename}`;
-    link.download = currentDocument.originalName || currentDocument.filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadFile({
+      url: currentDocument.url,
+      cloudinaryUrl: currentDocument.cloudinaryUrl,
+      originalName: currentDocument.originalName || currentDocument.filename || 'download'
+    });
   };
 
   const renderDocumentContent = () => {
     if (isImage) {
       return (
         <img
-          src={`http://localhost:4000/uploads/${currentDocument.filename}`}
+          src={getCorrectFileUrl({ url: currentDocument.url || currentDocument.path, cloudinaryUrl: currentDocument.cloudinaryUrl || undefined })}
           alt={currentDocument.originalName || currentDocument.filename}
           className="max-w-full max-h-full object-contain"
         />
@@ -64,7 +64,7 @@ const DocumentViewer = ({ documents, onClose }) => {
     if (isPDF) {
       return (
         <iframe
-          src={`http://localhost:4000/uploads/${currentDocument.filename}`}
+          src={`${getCorrectFileUrl({ url: currentDocument.url || currentDocument.path, cloudinaryUrl: currentDocument.cloudinaryUrl || undefined })}#toolbar=1&navpanes=1&scrollbar=1`}
           className="w-full h-full border-0"
           title={currentDocument.originalName || currentDocument.filename}
         />
@@ -76,7 +76,7 @@ const DocumentViewer = ({ documents, onClose }) => {
         <video
           controls
           className="max-w-full max-h-full"
-          src={`http://localhost:4000/uploads/${currentDocument.filename}`}
+          src={getCorrectFileUrl({ url: currentDocument.url || currentDocument.path, cloudinaryUrl: currentDocument.cloudinaryUrl || undefined })}
         >
           Your browser does not support the video tag.
         </video>

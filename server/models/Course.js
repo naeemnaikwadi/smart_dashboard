@@ -7,7 +7,7 @@ const MaterialSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['pdf', 'word', 'excel', 'video', 'audio', 'link'],
+    enum: ['pdf', 'word', 'excel', 'video', 'audio', 'link', 'image', 'document', 'spreadsheet', 'presentation', 'text', 'other'],
     required: true
   },
   url: {
@@ -23,6 +23,21 @@ const MaterialSchema = new mongoose.Schema({
   uploadedAt: {
     type: Date,
     default: Date.now
+  },
+  // Cloudinary metadata for cloud storage
+  cloudinaryId: {
+    type: String
+  },
+  cloudinaryUrl: {
+    type: String
+  },
+  cloudinaryVersion: {
+    type: String
+  },
+  // Legacy support for local files
+  isCloudinary: {
+    type: Boolean,
+    default: false
   }
 });
 

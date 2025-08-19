@@ -444,10 +444,12 @@ export default function InstructorDoubts() {
                             <div className="flex gap-2">
                               {doubt.images.map((image, index) => (
                                 <img
-                                  key={index}
-                                  src={`http://localhost:4000${image.url}`}
-                                  alt={image.fileName}
-                                  className="w-16 h-16 object-cover rounded border border-gray-200 dark:border-gray-600"
+                                  src={image.url}
+                                  alt={`Doubt image ${index + 1}`}
+                                  className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                  }}
                                 />
                               ))}
                             </div>

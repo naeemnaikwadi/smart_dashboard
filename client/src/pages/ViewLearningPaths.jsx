@@ -323,11 +323,16 @@ const ViewLearningPaths = () => {
 
   const viewMaterials = (resources) => {
     // Filter out link resources and only show uploaded files
-    const documents = resources.filter(resource => resource.uploadedFile).map(resource => ({
-      filename: resource.uploadedFile,
+    const documents = resources.filter(resource => resource.uploadedFile || resource.cloudinaryUrl).map(resource => ({
+      filename: resource.uploadedFile || resource.cloudinaryUrl,
       originalName: resource.title,
+      url: resource.cloudinaryUrl || resource.uploadedFile,
+      path: resource.cloudinaryUrl || resource.uploadedFile,
+      cloudinaryUrl: resource.cloudinaryUrl || resource.uploadedFile,
       type: resource.type,
-      size: 0, // We don't have size info in the current structure
+      size: resource.fileSize || 0,
+      mimetype: resource.type || 'application/octet-stream',
+      fileType: resource.type || 'application/octet-stream',
       uploadedAt: new Date() // We don't have upload date in the current structure
     }));
     
@@ -506,7 +511,7 @@ const ViewLearningPaths = () => {
                                     <h4 className="text-sm font-medium text-gray-900 dark:text-white">
                                       Resources:
                                     </h4>
-                                    {path.resources.some(r => r.uploadedFile) && (
+                                    {path.resources.some(r => r.uploadedFile || r.cloudinaryUrl) && (
                                       <button
                                         onClick={() => viewMaterials(path.resources)}
                                         className="text-blue-600 hover:text-blue-700 text-sm flex items-center gap-1 transition-colors"
@@ -558,6 +563,12 @@ const ViewLearningPaths = () => {
                                   </div>
                                 ) : (
                                   <div className="flex gap-2">
+                                    <button
+                                      onClick={() => navigate(`/learning-session/${path._id}`)}
+                                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                                    >
+                                      Manage Quizzes
+                                    </button>
                                     <button
                                       onClick={() => navigate(`/learning-paths/${path._id}/edit`)}
                                       className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"

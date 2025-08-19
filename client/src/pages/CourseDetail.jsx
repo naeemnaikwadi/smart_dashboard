@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getCurrentUser, getAuthHeaders } from '../utils/auth';
+import { getCurrentUser, getAuthHeaders, getFileUploadHeaders } from '../utils/auth';
+import { getCorrectFileUrl, formatFileSize, getFileIcon, downloadFile } from '../utils/fileUtils';
+import { uploadCourseMaterial } from '../utils/cloudinaryUpload';
 import DashboardLayout from '../components/DashboardLayout';
 import CourseRating from '../components/CourseRating';
+import FileViewer from '../components/FileViewer';
+import Toast from '../components/Toast';
 import { MessageCircle, Plus } from 'lucide-react';
 
 const CourseDetail = () => {
@@ -28,6 +32,13 @@ const CourseDetail = () => {
   const [sessionDate, setSessionDate] = useState('');
   const [sessionTime, setSessionTime] = useState('');
   const [sessionDuration, setSessionDuration] = useState(60);
+
+  // File viewer state
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [showFileViewer, setShowFileViewer] = useState(false);
+
+  // Toast state
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
   const currentUser = getCurrentUser();
   const isInstructor = currentUser?.role === 'instructor';
@@ -65,25 +76,41 @@ const CourseDetail = () => {
       let url = materialUrl;
       let fileName = '';
       let fileSize = 0;
+      let cloudinaryId = '';
+      let cloudinaryUrl = '';
+      let detectedType = materialType;
 
       // Handle file upload for non-link materials
       if (materialType !== 'link' && materialFile) {
-        const formData = new FormData();
-        formData.append('file', materialFile);
-
-        const uploadResponse = await fetch('http://localhost:4000/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-
-        if (uploadResponse.ok) {
-          const uploadData = await uploadResponse.json();
-          url = `http://localhost:4000${uploadData.filePath}`;
-          fileName = materialFile.name;
-          fileSize = materialFile.size;
+        // Auto-detect file type using filename and MIME type
+        const fileExtension = materialFile.name.toLowerCase();
+        if (materialFile.type.startsWith('image/') || fileExtension.includes('.jpg') || fileExtension.includes('.jpeg') || fileExtension.includes('.png') || fileExtension.includes('.gif')) {
+          detectedType = 'image';
+        } else if (materialFile.type === 'application/pdf' || fileExtension.includes('.pdf')) {
+          detectedType = 'pdf';
+        } else if (materialFile.type.includes('word') || materialFile.type.includes('document') || fileExtension.includes('.doc') || fileExtension.includes('.docx')) {
+          detectedType = 'document';
+        } else if (materialFile.type.includes('excel') || materialFile.type.includes('spreadsheet') || fileExtension.includes('.xls') || fileExtension.includes('.xlsx')) {
+          detectedType = 'spreadsheet';
+        } else if (materialFile.type.includes('powerpoint') || materialFile.type.includes('presentation') || fileExtension.includes('.ppt') || fileExtension.includes('.pptx')) {
+          detectedType = 'presentation';
+        } else if (materialFile.type.startsWith('video/') || fileExtension.includes('.mp4') || fileExtension.includes('.avi') || fileExtension.includes('.mov')) {
+          detectedType = 'video';
+        } else if (materialFile.type.startsWith('audio/') || fileExtension.includes('.mp3') || fileExtension.includes('.wav')) {
+          detectedType = 'audio';
+        } else if (fileExtension.includes('.txt')) {
+          detectedType = 'text';
         } else {
-          throw new Error('File upload failed');
+          detectedType = 'other';
         }
+
+        // Upload directly to Cloudinary using the utility (with server fallback)
+        const uploadResult = await uploadCourseMaterial(materialFile);
+        cloudinaryUrl = uploadResult.cloudinaryUrl;
+        url = cloudinaryUrl;
+        fileName = uploadResult.originalName || materialFile.name;
+        fileSize = uploadResult.size || materialFile.size;
+        cloudinaryId = uploadResult.cloudinaryId;
       }
 
       // Add material to course
@@ -92,15 +119,18 @@ const CourseDetail = () => {
         headers: getAuthHeaders(),
         body: JSON.stringify({
           title: materialTitle,
-          type: materialType,
+          type: detectedType,
           url,
           fileName,
-          fileSize
+          fileSize,
+          cloudinaryId,
+          cloudinaryUrl,
+          isCloudinary: true
         })
       });
 
       if (response.ok) {
-        setSuccess('Material uploaded successfully!');
+        setSuccess('Material uploaded successfully to Cloudinary!');
         setMaterialTitle('');
         setMaterialFile(null);
         setMaterialUrl('');
@@ -112,7 +142,7 @@ const CourseDetail = () => {
       }
     } catch (error) {
       console.error('Error uploading material:', error);
-      setError('Failed to upload material');
+      setError(error.message || 'Failed to upload material');
     }
   };
 
@@ -206,24 +236,16 @@ const CourseDetail = () => {
     });
   };
 
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const getFileIcon = (type) => {
-    const icons = {
-      pdf: '📄',
-      word: '📝',
-      excel: '📊',
-      video: '🎥',
-      audio: '🎵',
-      link: '🔗'
-    };
-    return icons[type] || '📎';
+  const getFileType = (filename) => {
+    const extension = filename.split('.').pop()?.toLowerCase();
+    if (extension === 'pdf') return 'pdf';
+    if (['doc', 'docx'].includes(extension)) return 'word';
+    if (['xls', 'xlsx'].includes(extension)) return 'excel';
+    if (['ppt', 'pptx'].includes(extension)) return 'powerpoint';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) return 'image';
+    if (['mp4', 'avi', 'mov', 'wmv'].includes(extension)) return 'video';
+    if (['mp3', 'wav', 'ogg'].includes(extension)) return 'audio';
+    return 'document';
   };
 
   if (loading) {
@@ -404,14 +426,22 @@ const CourseDetail = () => {
                       <input
                         type="file"
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        onChange={(e) => setMaterialFile(e.target.files[0])}
-                        accept={materialType === 'pdf' ? '.pdf' : 
-                               materialType === 'word' ? '.doc,.docx' :
-                               materialType === 'excel' ? '.xls,.xlsx' :
-                               materialType === 'video' ? '.mp4,.avi,.mov,.wmv' :
-                               materialType === 'audio' ? '.mp3,.wav,.ogg' : '*'}
+                        onChange={(e) => {
+                          const file = e.target.files[0];
+                          if (file && file.size > 10 * 1024 * 1024) {
+                            alert('File size must be under 10MB for Cloudinary upload. Please choose a smaller file.');
+                            e.target.value = '';
+                            setMaterialFile(null);
+                          } else {
+                            setMaterialFile(file);
+                          }
+                        }}
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.mp4,.avi,.mov,.mp3,.wav,.txt,.zip,.rar"
                         required
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Maximum file size: 10MB (Cloudinary free tier limit)
+                      </p>
                     </div>
                   )}
 
@@ -466,14 +496,141 @@ const CourseDetail = () => {
                     </div>
                     
                     <div className="space-y-2">
-                      <a
-                        href={material.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center px-4 py-2 rounded-lg"
-                      >
-                        {material.type === 'link' ? 'Open Link' : 'Download'}
-                      </a>
+                      {/* Show image preview if it's an image */}
+                      {material.type === 'image' ? (
+                        <img 
+                          src={getCorrectFileUrl({ url: material.url, cloudinaryUrl: material.cloudinaryUrl })} 
+                          alt={material.title}
+                          className="w-full h-24 sm:h-32 object-cover rounded-lg border"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-24 sm:h-32 bg-gray-100 dark:bg-gray-700 rounded-lg border flex items-center justify-center">
+                          <span className="text-2xl sm:text-4xl">
+                            {getFileIcon(getFileType(material.fileName || material.title))}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* File type indicator */}
+                      <div className="text-xs text-gray-500 mb-2">
+                        {material.type === 'link' ? '🔗 External Link' : 
+                         material.type === 'pdf' ? '📄 PDF Document' :
+                         material.type === 'document' ? '📝 Document' :
+                         material.type === 'spreadsheet' ? '📊 Spreadsheet' :
+                         material.type === 'presentation' ? '📊 Presentation' :
+                         material.type === 'video' ? '🎥 Video File' :
+                         material.type === 'audio' ? '🎵 Audio File' :
+                         material.type === 'image' ? '🖼️ Image File' :
+                         material.type === 'text' ? '📄 Text File' : '📎 File'}
+                        {material.fileSize && ` • ${formatFileSize(material.fileSize)}`}
+                        
+                        {/* Show Cloudinary status */}
+                        {material.isCloudinary && (
+                          <span className="text-green-600 ml-2">☁️ Cloudinary</span>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex gap-2">
+                        {material.type === 'link' ? (
+                          <a
+                            href={getCorrectFileUrl({ url: material.url, cloudinaryUrl: material.cloudinaryUrl })}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-center px-4 py-2 rounded-lg"
+                          >
+                            Open Link
+                          </a>
+                        ) : material.type === 'image' ? (
+                          <div className="flex gap-2 w-full">
+                            <button
+                              onClick={() => {
+                                setSelectedFile(material);
+                                setShowFileViewer(true);
+                              }}
+                              className="flex-1 bg-green-600 hover:bg-green-700 text-white text-center px-4 py-2 rounded-lg"
+                            >
+                              Preview
+                            </button>
+                            <a
+                              href={getCorrectFileUrl({ url: material.url, cloudinaryUrl: material.cloudinaryUrl })}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-center px-4 py-2 rounded-lg"
+                            >
+                              View Full Size
+                            </a>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col sm:flex-row gap-2 w-full">
+                                                            <button
+                                  onClick={() => {
+                                    // Prepare file object with all necessary properties for FileViewer
+                                    const fileForViewer = {
+                                      ...material,
+                                      url: material.cloudinaryUrl || material.url,
+                                      path: material.cloudinaryUrl || material.url,
+                                      cloudinaryUrl: material.cloudinaryUrl || material.url,
+                                      mimetype: material.type === 'pdf' ? 'application/pdf' : 
+                                               material.type === 'image' ? 'image/jpeg' :
+                                               material.type === 'document' ? 'application/msword' :
+                                               material.type === 'spreadsheet' ? 'application/vnd.ms-excel' :
+                                               material.type === 'presentation' ? 'application/vnd.ms-powerpoint' :
+                                               material.type === 'video' ? 'video/mp4' :
+                                               material.type === 'audio' ? 'audio/mpeg' :
+                                               'application/octet-stream',
+                                      fileType: material.type === 'pdf' ? 'application/pdf' : 
+                                               material.type === 'image' ? 'image/jpeg' :
+                                               material.type === 'document' ? 'application/msword' :
+                                               material.type === 'spreadsheet' ? 'application/vnd.ms-excel' :
+                                               material.type === 'presentation' ? 'application/vnd.ms-powerpoint' :
+                                               material.type === 'video' ? 'video/mp4' :
+                                               material.type === 'audio' ? 'audio/mpeg' :
+                                               'application/octet-stream'
+                                    };
+                                    setSelectedFile(fileForViewer);
+                                    setShowFileViewer(true);
+                                  }}
+                                  className="flex-1 bg-green-600 hover:bg-green-700 text-white text-center px-3 sm:px-4 py-2 rounded-lg text-sm"
+                                >
+                                  <span className="hidden sm:inline">Preview</span>
+                                  <span className="sm:hidden">👁️</span>
+                                </button>
+                            <button
+                              onClick={() => downloadFile({
+                                url: material.url,
+                                cloudinaryUrl: material.cloudinaryUrl,
+                                originalName: material.title || material.fileName || 'download'
+                              })}
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-center px-3 sm:px-4 py-2 rounded-lg text-sm"
+                            >
+                              <span className="hidden sm:inline">Download</span>
+                              <span className="sm:hidden">📥</span>
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* Copy URL button */}
+                        <button
+                          onClick={async () => {
+                            try {
+                              const correctedUrl = getCorrectFileUrl({ url: material.url, cloudinaryUrl: material.cloudinaryUrl });
+                              await navigator.clipboard.writeText(correctedUrl);
+                              setToast({ show: true, message: 'URL copied to clipboard!', type: 'success' });
+                            } catch (err) {
+                              setToast({ show: true, message: 'Failed to copy URL', type: 'error' });
+                            }
+                          }}
+                          className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg"
+                          title="Copy URL"
+                        >
+                          📋
+                        </button>
+                      </div>
+                      
                       <p className="text-xs text-gray-400">
                         Uploaded: {formatDate(material.uploadedAt)}
                       </p>
@@ -703,12 +860,20 @@ const CourseDetail = () => {
                           </button>
                         )}
                         {isInstructor && (
-                          <button
-                            onClick={() => navigate(`/edit-learning-path/${path._id}`)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm"
-                          >
-                            Edit
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => navigate(`/learning-session/${path._id}`)}
+                              className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm"
+                            >
+                              Manage Quizzes
+                            </button>
+                            <button
+                              onClick={() => navigate(`/edit-learning-path/${path._id}`)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm"
+                            >
+                              Edit
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -745,6 +910,23 @@ const CourseDetail = () => {
           </div>
         )}
       </div>
+
+      {/* File Viewer Modal */}
+      {showFileViewer && selectedFile && (
+        <FileViewer
+          file={selectedFile}
+          onClose={() => setShowFileViewer(false)}
+        />
+      )}
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ ...toast, show: false })}
+        />
+      )}
     </DashboardLayout>
   );
 };

@@ -7,29 +7,19 @@ const { auth, instructorOnly, studentOnly } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const Classroom = require('../models/Classroom'); // Added missing import for Classroom
+const CloudinaryService = require('../services/cloudinaryService');
 
-// Configure multer for image uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/doubts/');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'doubt-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Configure multer for memory storage (for Cloudinary uploads)
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 10 * 1024 * 1024 // 10MB limit
   },
   fileFilter: function (req, file, cb) {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'));
-    }
+    // Allow all file types for doubts
+    cb(null, true);
   }
 });
 
@@ -54,10 +44,15 @@ router.post('/', auth, studentOnly, upload.array('images', 5), async (req, res) 
       return res.status(403).json({ error: 'You are not enrolled in this classroom' });
     }
 
-    // Process uploaded images
-    const images = req.files ? req.files.map(file => ({
-      url: `/uploads/doubts/${file.filename}`,
-      fileName: file.originalname
+    // Process uploaded images/files
+    const images = req.files ? await Promise.all(req.files.map(async file => {
+      const result = await CloudinaryService.uploadFile(file.buffer, file, 'smart-learning/doubts');
+      return {
+        url: result.cloudinaryUrl,
+        fileName: file.originalname,
+        fileType: file.mimetype,
+        uploadedAt: result.uploadedAt
+      };
     })) : [];
 
     const doubt = new Doubt({
@@ -67,6 +62,76 @@ router.post('/', auth, studentOnly, upload.array('images', 5), async (req, res) 
       title,
       description,
       images,
+      priority: priority || 'medium',
+      tags: tags ? tags.split(',').map(tag => tag.trim()) : [],
+      isUrgent: isUrgent === 'true'
+    });
+
+    await doubt.save();
+
+    // Create notification for instructor
+    const notification = new Notification({
+      recipient: course.instructor,
+      type: 'doubt',
+      title: 'New Doubt Submitted',
+      message: `Student ${req.user.name} has submitted a doubt in course "${course.name}"`,
+      relatedData: {
+        doubt: doubt._id,
+        course: courseId,
+        student: req.user.id
+      },
+      priority: isUrgent === 'true' ? 'urgent' : 'high',
+      actionUrl: `/instructor/doubts/${doubt._id}`
+    });
+
+    await notification.save();
+
+    res.status(201).json({
+      message: 'Doubt submitted successfully',
+      doubt: await doubt.populate(['student', 'course', 'classroom'])
+    });
+  } catch (error) {
+    console.error('Error creating doubt:', error);
+    res.status(500).json({ error: 'Failed to submit doubt' });
+  }
+});
+
+// Alternative route for direct Cloudinary uploads (no file processing needed)
+router.post('/direct', auth, studentOnly, async (req, res) => {
+  try {
+    const { courseId, title, description, priority, tags, isUrgent, images } = req.body;
+    
+    // Verify course exists
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+    
+    // Check if student is enrolled in the classroom that contains this course
+    const classroom = await Classroom.findById(course.classroom);
+    if (!classroom) {
+      return res.status(404).json({ error: 'Classroom not found' });
+    }
+    
+    if (!classroom.students.map(id => id.toString()).includes(req.user.id)) {
+      return res.status(403).json({ error: 'You are not enrolled in this classroom' });
+    }
+
+    // Process images array (already uploaded to Cloudinary)
+    const processedImages = images ? images.map(img => ({
+      url: img.url,
+      fileName: img.fileName || 'Uploaded file',
+      fileType: img.fileType || 'image/jpeg',
+      uploadedAt: new Date()
+    })) : [];
+
+    const doubt = new Doubt({
+      student: req.user.id,
+      course: courseId,
+      classroom: course.classroom,
+      title,
+      description,
+      images: processedImages,
       priority: priority || 'medium',
       tags: tags ? tags.split(',').map(tag => tag.trim()) : [],
       isUrgent: isUrgent === 'true'
@@ -313,19 +378,9 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// Configure multer for answer attachments
-const answerStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/doubts/answers/');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'answer-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
+// Configure multer for answer attachments (using memory storage for Cloudinary)
 const answerUpload = multer({
-  storage: answerStorage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024 // 10MB limit for PDFs and images
   },
@@ -359,11 +414,14 @@ router.put('/:id/answer', auth, instructorOnly, answerUpload.array('attachments'
     }
 
     // Process uploaded attachments
-    const attachments = req.files ? req.files.map(file => ({
-      url: `/uploads/doubts/answers/${file.filename}`,
-      fileName: file.originalname,
-      fileType: file.mimetype,
-      uploadedAt: new Date()
+    const attachments = req.files ? await Promise.all(req.files.map(async file => {
+      const result = await CloudinaryService.uploadFile(file.buffer, file, 'smart-learning/doubts/answers');
+      return {
+        url: result.cloudinaryUrl,
+        fileName: file.originalname,
+        fileType: file.mimetype,
+        uploadedAt: new Date()
+      };
     })) : [];
 
     // Process links

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { clearUser } from '../redux/userSlice';
+import logo from '../assets/logo.png';
 import {
   Menu, Moon, Sun, ChevronDown,
   LayoutDashboard, Video, Upload, Users, BookOpen,
@@ -19,7 +20,7 @@ import LiveSessionCalendar from './LiveSessionCalendar';
 import NotificationPopup from './NotificationPopup';
 
 export default function DashboardLayout({ role, children }) {
-  const navigate = useNavigate();
+ // const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
 
@@ -30,6 +31,11 @@ export default function DashboardLayout({ role, children }) {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
 
   const [user, setUser] = useState(null);
+
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const initial = (user?.name || "U").charAt(0).toUpperCase();
 
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem('user'));
@@ -65,7 +71,17 @@ export default function DashboardLayout({ role, children }) {
     navigate('/login');
   };
 
-  const sidebarLinks = role === 'instructor'
+  // Resolve role: prefer prop, then user.state, then localStorage
+  const resolvedRole = role || user?.role || (() => {
+    try {
+      const u = JSON.parse(localStorage.getItem('user') || '{}');
+      return u.role || localStorage.getItem('userRole') || 'student';
+    } catch {
+      return 'student';
+    }
+  })();
+
+  const sidebarLinks = resolvedRole === 'instructor'
     ? [
         { label: 'Dashboard', path: '/instructor', icon: <LayoutDashboard size={18} /> },
         { label: 'My Courses', path: '/instructor/courses', icon: <BookOpen size={18} /> },
@@ -78,7 +94,8 @@ export default function DashboardLayout({ role, children }) {
         { label: 'Doubts', path: '/instructor/doubts', icon: <MessageCircle size={18} /> },
         // Calendar button will open modal, not navigate
         { label: 'Calendar', path: null, icon: <Calendar size={18} />, isCalendar: true },
-        { label: 'Analytics', path: '/instructor/analytics', icon: <TrendingUp size={18} /> },
+        // Replace Analytics with Learning Sessions overview
+        { label: 'Learning Sessions', path: '/learning-paths', icon: <Target size={18} /> },
         { label: 'Profile', path: '/profile', icon: <BadgeCheck size={18} /> },
       ]
     : [
@@ -117,23 +134,34 @@ export default function DashboardLayout({ role, children }) {
 
       {/* Sidebar - Fixed and Static */}
       <div className={`fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-gray-800 shadow-lg transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 md:translate-x-0`}>
-        <div className="flex flex-col h-full p-4 md:p-6 justify-between overflow-y-auto">
+        <div className="flex flex-col h-full m-4  justify-between overflow-y-auto">
           <div>
             {/* Sidebar Header with Close Button for Mobile */}
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl md:text-2xl font-bold text-primary dark:text-white">
+            {/* <div className="flex items-center justify-between mb-6"> */}
+              <div className="w-25 h-14 ml-2 flex items-center justify-start border-b-2">
+  <img 
+    src={logo} 
+    alt="logo" 
+    className="max-w-full max-h-full object-contain mix-blend-multiply " 
+  />
+  <h2 className="text-lg md:text-2xl font-bold text-gray-900 dark:text-white  ml-2  pb-4">SkillSync</h2>
+
+</div>
+
+
+              {/* <h2 className="text-xl md:text-2xl font-bold text-primary dark:text-white">
                 {role === 'instructor' ? 'Instructor' : 'Student'}
-              </h2>
-              <button
+              </h2> */}
+              {/* <button
                 onClick={() => setSidebarOpen(false)}
                 className="md:hidden p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
                 <X size={20} />
-              </button>
-            </div>
+              </button> */}
+            {/* </div> */}
 
             {/* Sidebar Navigation */}
-            <nav className="space-y-2">
+            <nav className="space-y-2 mt-4">
               {sidebarLinks.map(link => (
                 <button
                   key={link.label}
@@ -181,7 +209,7 @@ export default function DashboardLayout({ role, children }) {
               </button>
               
               <h1 className="text-lg md:text-2xl font-bold text-gray-900 dark:text-white">
-                {role === 'instructor' ? 'Instructor Dashboard' : 'Student Dashboard'}
+                {resolvedRole === 'instructor' ? 'Instructor Dashboard' : 'Student Dashboard'}
               </h1>
             </div>
             
@@ -192,49 +220,65 @@ export default function DashboardLayout({ role, children }) {
                 onClick={toggleDarkMode}
                 className="p-2 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
               >
-                {isDark ? <Sun size={18} /> : <Moon size={18} />}
+                {isDark ? <Sun className='w-6 h-6' /> : <Moon className='w-6 h-6' />}
               </button>
 
               {/* Notification Popup */}
-              <NotificationPopup role={role} />
+              <NotificationPopup role={resolvedRole} />
               
               {/* User Info - Hidden on small screens */}
-              <div className="hidden sm:block text-sm text-gray-600 dark:text-gray-300">
+              {/* <div className="hidden sm:block text-sm text-gray-600 dark:text-gray-300">
                 Welcome, {user?.name || localStorage.getItem('userName') || (role === 'instructor' ? 'Instructor' : 'Student')}
-              </div>
+              </div> */}
               
-              {/* Profile Image/Initial */}
               <div className="relative">
-                {user?.avatarUrl ? (
-                  <img 
-                    src={`http://localhost:4000${user.avatarUrl}`} 
-                    alt="Profile" 
-                    className="w-8 h-8 md:w-10 md:h-10 rounded-full object-cover border-2 border-gray-300 dark:border-gray-600 shadow-sm"
-                  />
-                ) : (
-                  <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-600 rounded-full flex items-center justify-center text-sm md:text-lg font-bold text-white border-2 border-gray-300 dark:border-gray-600 shadow-sm">
-                    {user?.name ? user.name.charAt(0).toUpperCase() : (role === 'instructor' ? 'I' : 'S')}
-                  </div>
-                )}
-              </div>
+      {/* Avatar */}
+      <div
+        className="w-9 h-9 rounded-full bg-blue-600 text-white  flex items-center justify-center text-sm font-semibold cursor-pointer overflow-hidden"
+        onClick={() => setOpen(!open)}
+      >
+        {user?.avatarUrl ? (
+          <img
+            src={
+              user?.avatarUrl?.startsWith("http")
+                ? user.avatarUrl
+                : `http://localhost:4000${user?.avatarUrl}`
+            }
+            alt={user?.name || "User"}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              e.target.style.display = "none";
+            }}
+          />
+        ) : (
+          initial
+        )}
+      </div>
 
-              {/* Profile and Logout Buttons */}
-              <div className="flex items-center gap-1 md:gap-2">
-                <button
-                  onClick={() => navigate('/profile')}
-                  className="px-2 md:px-3 py-1 md:py-2 text-xs md:text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                >
-                  <span className="hidden sm:inline">Profile</span>
-                  <span className="sm:hidden">P</span>
-                </button>
-                <button
-                  onClick={logoutHandler}
-                  className="px-2 md:px-3 py-1 md:py-2 text-xs md:text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                >
-                  <span className="hidden sm:inline">Logout</span>
-                  <span className="sm:hidden">L</span>
-                </button>
-              </div>
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute right-0 mt-2 w-32 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
+          <button
+            onClick={() => {
+              setOpen(false);
+              navigate("/profile");
+            }}
+            className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            Profile
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              logoutHandler();
+            }}
+            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-gray-700"
+          >
+            Logout
+          </button>
+        </div>
+      )}
+    </div>
             </div>
           </div>
         </header>
@@ -253,13 +297,13 @@ export default function DashboardLayout({ role, children }) {
                 <Calendar className="w-5 h-5 md:w-6 md:h-6 text-blue-600" />
                 Calendar
               </h2>
-              <LiveSessionCalendar role={role} />
+              <LiveSessionCalendar role={resolvedRole} />
             </div>
           </div>
         )}
 
         {/* Page Content - Scrollable area only */}
-        <main className="p-3 md:p-6 overflow-y-auto flex-1 min-h-0">{children}</main>
+        <main className=" md:p-6 overflow-y-auto flex-1 min-h-0">{children}</main>
       </div>
     </div>
   );

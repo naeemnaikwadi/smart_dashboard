@@ -16,6 +16,8 @@ const CreateLearningPath = () => {
   const [selectedCourse, setSelectedCourse] = useState('');
   const [courses, setCourses] = useState([]);
   const [steps, setSteps] = useState([]);
+  const [addFinalTest, setAddFinalTest] = useState(false);
+  const [activeQuizEditor, setActiveQuizEditor] = useState(null);
 
   // Check if we have course context from navigation
   const courseContext = location.state?.selectedCourse;
@@ -54,7 +56,8 @@ const CreateLearningPath = () => {
       description: '',
       order: steps.length + 1,
       estimatedTime: 30,
-      resources: []
+      resources: [],
+      quizRequired: false
     };
     setSteps([...steps, newStep]);
   };
@@ -69,6 +72,109 @@ const CreateLearningPath = () => {
     setSteps(prev => prev.map(step => 
       step.id === stepId ? { ...step, [field]: value } : step
     ));
+  };
+
+  // Quiz builder helpers (store draft in each step)
+  const ensureQuizDraft = (step) => ({
+    title: step.quizDraft?.title || `${step.title || 'Step'} Quiz`,
+    description: step.quizDraft?.description || '',
+    timeLimit: step.quizDraft?.timeLimit || 30,
+    passingScore: step.quizDraft?.passingScore || 70,
+    allowRetakes: step.quizDraft?.allowRetakes !== false,
+    maxAttempts: step.quizDraft?.maxAttempts || 3,
+    questions: step.quizDraft?.questions || []
+  });
+
+  const toggleQuizEditor = (stepId) => {
+    setActiveQuizEditor(prev => prev === stepId ? null : stepId);
+    setSteps(prev => prev.map(step => step.id === stepId ? { ...step, quizDraft: ensureQuizDraft(step) } : step));
+  };
+
+  const updateQuizMeta = (stepId, field, value) => {
+    setSteps(prev => prev.map(step => step.id === stepId ? {
+      ...step,
+      quizDraft: { ...ensureQuizDraft(step), [field]: value }
+    } : step));
+  };
+
+  const addQuizQuestion = (stepId) => {
+    setSteps(prev => prev.map(step => {
+      if (step.id !== stepId) return step;
+      const draft = ensureQuizDraft(step);
+      const newQuestion = {
+        id: Date.now().toString(),
+        question: '',
+        type: 'mcq',
+        options: [{ text: '', isCorrect: false }],
+        correctAnswer: '',
+        longAnswerGuidelines: '',
+        numericAnswer: '',
+        numericTolerance: 0,
+        requiresUpload: false,
+        points: 1,
+        difficulty: 'medium',
+        explanation: ''
+      };
+      return { ...step, quizDraft: { ...draft, questions: [...draft.questions, newQuestion] } };
+    }));
+  };
+
+  const updateQuizQuestion = (stepId, qIndex, field, value) => {
+    setSteps(prev => prev.map(step => {
+      if (step.id !== stepId) return step;
+      const draft = ensureQuizDraft(step);
+      const updated = [...draft.questions];
+      updated[qIndex] = { ...updated[qIndex], [field]: value };
+      return { ...step, quizDraft: { ...draft, questions: updated } };
+    }));
+  };
+
+  const removeQuizQuestion = (stepId, qIndex) => {
+    setSteps(prev => prev.map(step => {
+      if (step.id !== stepId) return step;
+      const draft = ensureQuizDraft(step);
+      const updated = draft.questions.filter((_, i) => i !== qIndex);
+      return { ...step, quizDraft: { ...draft, questions: updated } };
+    }));
+  };
+
+  const addOptionToQuestion = (stepId, qIndex) => {
+    setSteps(prev => prev.map(step => {
+      if (step.id !== stepId) return step;
+      const draft = ensureQuizDraft(step);
+      const updated = [...draft.questions];
+      const q = { ...updated[qIndex] };
+      q.options = [...(q.options || []), { text: '', isCorrect: false }];
+      updated[qIndex] = q;
+      return { ...step, quizDraft: { ...draft, questions: updated } };
+    }));
+  };
+
+  const updateOptionInQuestion = (stepId, qIndex, optIndex, field, value) => {
+    setSteps(prev => prev.map(step => {
+      if (step.id !== stepId) return step;
+      const draft = ensureQuizDraft(step);
+      const updated = [...draft.questions];
+      const q = { ...updated[qIndex] };
+      const opts = [...(q.options || [])];
+      opts[optIndex] = { ...opts[optIndex], [field]: value };
+      q.options = opts;
+      updated[qIndex] = q;
+      return { ...step, quizDraft: { ...draft, questions: updated } };
+    }));
+  };
+
+  const removeOptionFromQuestion = (stepId, qIndex, optIndex) => {
+    setSteps(prev => prev.map(step => {
+      if (step.id !== stepId) return step;
+      const draft = ensureQuizDraft(step);
+      const updated = [...draft.questions];
+      const q = { ...updated[qIndex] };
+      const opts = (q.options || []).filter((_, i) => i !== optIndex);
+      q.options = opts;
+      updated[qIndex] = q;
+      return { ...step, quizDraft: { ...draft, questions: updated } };
+    }));
   };
 
   const moveStep = (stepId, direction) => {
@@ -169,12 +275,31 @@ const CreateLearningPath = () => {
         });
       });
 
+      // If final test is requested, mark the last step as quizRequired in payload
+      const stepsToSend = addFinalTest && steps.length > 0
+        ? steps.map((s, idx) => idx === steps.length - 1 ? { ...s, quizRequired: true } : s)
+        : steps;
+
       const response = await fetch('http://localhost:4000/api/learning-paths', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: formData
+        body: (() => {
+          const fd = new FormData();
+          fd.append('title', title);
+          fd.append('description', description);
+          fd.append('courseId', selectedCourse);
+          fd.append('steps', JSON.stringify(stepsToSend));
+          steps.forEach((step, stepIndex) => {
+            step.resources.forEach((resource, resourceIndex) => {
+              if (resource.file) {
+                fd.append(`step_${stepIndex}_resource_${resourceIndex}`, resource.file);
+              }
+            });
+          });
+          return fd;
+        })()
       });
 
       if (response.ok) {
@@ -309,6 +434,20 @@ const CreateLearningPath = () => {
               </button>
             </div>
 
+            {/* Final Test Toggle */}
+            <div className="mb-4">
+              <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={addFinalTest}
+                  onChange={(e) => setAddFinalTest(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                />
+                Add a Final Test on the last step (quiz required)
+              </label>
+              <p className="text-xs text-gray-500 mt-1">You can add the final quiz questions later from the Learning Session screen.</p>
+            </div>
+
             {steps.length === 0 ? (
               <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                 <p>No steps added yet. Click "Add Step" to get started.</p>
@@ -394,6 +533,220 @@ const CreateLearningPath = () => {
                         required
                       />
                     </div>
+
+                    {/* Step Quiz Requirement */}
+                    <div className="mb-4">
+                      <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={step.quizRequired || false}
+                          onChange={(e) => updateStep(step.id, 'quizRequired', e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                        />
+                        Require passing a quiz to proceed from this step
+                      </label>
+                    </div>
+
+                    {/* Inline Quiz Builder (Optional) */}
+                    <div className="mb-4">
+                      <button
+                        type="button"
+                        onClick={() => toggleQuizEditor(step.id)}
+                        className="px-4 py-2 rounded-lg text-white bg-purple-600 hover:bg-purple-700"
+                      >
+                        {activeQuizEditor === step.id ? 'Close Quiz Builder' : `Configure Quiz (Optional)${step.quizDraft?.questions?.length ? ` - ${step.quizDraft.questions.length} questions` : ''}`}
+                      </button>
+                    </div>
+
+                    {activeQuizEditor === step.id && (
+                      <div className="mb-6 p-4 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quiz Title</label>
+                            <input
+                              type="text"
+                              value={ensureQuizDraft(step).title}
+                              onChange={(e) => updateQuizMeta(step.id, 'title', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                              placeholder={`${step.title} Quiz`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Passing Score (%)</label>
+                            <input
+                              type="number"
+                              value={ensureQuizDraft(step).passingScore}
+                              onChange={(e) => updateQuizMeta(step.id, 'passingScore', parseInt(e.target.value) || 70)}
+                              min="0"
+                              max="100"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Time Limit (min)</label>
+                            <input
+                              type="number"
+                              value={ensureQuizDraft(step).timeLimit}
+                              onChange={(e) => updateQuizMeta(step.id, 'timeLimit', parseInt(e.target.value) || 30)}
+                              min="5"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                            />
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                              <input
+                                type="checkbox"
+                                checked={ensureQuizDraft(step).allowRetakes}
+                                onChange={(e) => updateQuizMeta(step.id, 'allowRetakes', e.target.checked)}
+                                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                              />
+                              Allow Retakes
+                            </label>
+                            <div className="flex-1">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Max Attempts</label>
+                              <input
+                                type="number"
+                                value={ensureQuizDraft(step).maxAttempts}
+                                onChange={(e) => updateQuizMeta(step.id, 'maxAttempts', parseInt(e.target.value) || 3)}
+                                min="1"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mb-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium text-gray-800 dark:text-gray-200">Questions ({ensureQuizDraft(step).questions.length})</h4>
+                            <button
+                              type="button"
+                              onClick={() => addQuizQuestion(step.id)}
+                              className="px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg"
+                            >
+                              Add Question
+                            </button>
+                          </div>
+                        </div>
+
+                        {ensureQuizDraft(step).questions.map((q, qIndex) => (
+                          <div key={q.id} className="mb-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
+                                <select
+                                  value={q.type}
+                                  onChange={(e) => updateQuizQuestion(step.id, qIndex, 'type', e.target.value)}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                >
+                                  <option value="mcq">Multiple Choice (Single)</option>
+                                  <option value="multiple_choice">Multiple Choice (Multiple)</option>
+                                  <option value="numerical">Numerical</option>
+                                  <option value="long_answer">Long Answer</option>
+                                  <option value="assignment">Upload Assignment</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Points</label>
+                                <input
+                                  type="number"
+                                  value={q.points}
+                                  onChange={(e) => updateQuizQuestion(step.id, qIndex, 'points', parseInt(e.target.value) || 1)}
+                                  min="1"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                />
+                              </div>
+                            </div>
+                            <div className="mb-2">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Question</label>
+                              <textarea
+                                value={q.question}
+                                onChange={(e) => updateQuizQuestion(step.id, qIndex, 'question', e.target.value)}
+                                rows={2}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                              />
+                            </div>
+
+                            {(q.type === 'mcq' || q.type === 'multiple_choice') && (
+                              <div className="mb-2">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Options</span>
+                                  <button type="button" onClick={() => addOptionToQuestion(step.id, qIndex)} className="text-sm px-2 py-1 rounded bg-gray-200 dark:bg-gray-600">Add Option</button>
+                                </div>
+                                {(q.options || []).map((opt, optIndex) => (
+                                  <div key={optIndex} className="flex items-center gap-2 mb-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!opt.isCorrect}
+                                      onChange={(e) => updateOptionInQuestion(step.id, qIndex, optIndex, 'isCorrect', e.target.checked)}
+                                    />
+                                    <input
+                                      type="text"
+                                      value={opt.text}
+                                      onChange={(e) => updateOptionInQuestion(step.id, qIndex, optIndex, 'text', e.target.value)}
+                                      className="flex-1 px-2 py-1 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                      placeholder={`Option ${optIndex + 1}`}
+                                    />
+                                    <button type="button" onClick={() => removeOptionFromQuestion(step.id, qIndex, optIndex)} className="text-xs px-2 py-1 rounded bg-red-100 text-red-700">Remove</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {q.type === 'numerical' && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Correct Value</label>
+                                  <input
+                                    type="number"
+                                    value={q.numericAnswer}
+                                    onChange={(e) => updateQuizQuestion(step.id, qIndex, 'numericAnswer', e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tolerance (±)</label>
+                                  <input
+                                    type="number"
+                                    value={q.numericTolerance}
+                                    onChange={(e) => updateQuizQuestion(step.id, qIndex, 'numericTolerance', parseFloat(e.target.value) || 0)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {q.type === 'long_answer' && (
+                              <div className="mb-2">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Guidelines</label>
+                                <textarea
+                                  value={q.longAnswerGuidelines}
+                                  onChange={(e) => updateQuizQuestion(step.id, qIndex, 'longAnswerGuidelines', e.target.value)}
+                                  rows={2}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                />
+                              </div>
+                            )}
+
+                            {q.type === 'assignment' && (
+                              <div className="mb-2">
+                                <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!q.requiresUpload}
+                                    onChange={(e) => updateQuizQuestion(step.id, qIndex, 'requiresUpload', e.target.checked)}
+                                  />
+                                  Require student file upload
+                                </label>
+                              </div>
+                            )}
+
+                            <div className="flex justify-end">
+                              <button type="button" onClick={() => removeQuizQuestion(step.id, qIndex)} className="text-sm px-3 py-1 rounded bg-red-100 text-red-700">Remove Question</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Resources */}
                     <div className="border-t border-gray-200 dark:border-gray-600 pt-4">

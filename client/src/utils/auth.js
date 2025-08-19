@@ -7,6 +7,15 @@ export const getAuthHeaders = () => {
   };
 };
 
+// Special headers for file uploads (no Content-Type, let browser set it)
+export const getFileUploadHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    'Authorization': `Bearer ${token}`
+    // Don't set Content-Type for FormData uploads
+  };
+};
+
 export const getCurrentUser = () => {
   try {
     const userStr = localStorage.getItem('user');

@@ -10,7 +10,7 @@ const CreateLiveSession = () => {
 
   const handleCreateSession = async () => {
     try {
-        const generatedLink = `http://localhost:3000/student/join/${title}/Alice`; // ✅ Define it first
+        const generatedLink = `http://localhost:4000/student/join/${title}/Alice`; // ✅ Define it first
 
       // Save session to backend
       await axios.post('http://localhost:4000/api/sessions', {
@@ -26,7 +26,7 @@ const CreateLiveSession = () => {
         roomName: title,
       });
 
-      setJoinLink(`http://localhost:3000/student/join/${title}/Alice`);
+      setJoinLink(`http://localhost:4000/student/join/${title}/Alice`);
       setStatus(`✅ Session and room "${title}" created successfully`);
 
       setTitle('');

@@ -104,10 +104,13 @@ export default function InstructorDashboard() {
               {/* Profile Section */}
               <div className="relative">
                 {localStorage.getItem('user') && JSON.parse(localStorage.getItem('user')).avatarUrl ? (
-                  <img 
-                    src={`http://localhost:4000${JSON.parse(localStorage.getItem('user')).avatarUrl}`} 
-                    alt="Profile" 
+                  <img
+                    src={JSON.parse(localStorage.getItem('user')).avatarUrl?.startsWith('http') ? JSON.parse(localStorage.getItem('user')).avatarUrl : `http://localhost:4000${JSON.parse(localStorage.getItem('user')).avatarUrl}`}
+                    alt={JSON.parse(localStorage.getItem('user')).name || 'Instructor'}
                     className="w-16 h-16 rounded-full object-cover border-4 border-white shadow-lg"
+                    onError={(e) => {
+                      e.target.src = '/logo192.png';
+                    }}
                   />
                 ) : (
                   <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-2xl font-bold text-white border-4 border-white shadow-lg">
@@ -120,7 +123,7 @@ export default function InstructorDashboard() {
                 <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">
                   Welcome, {localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).name || localStorage.getItem('userName') || 'Instructor' : 'Instructor'}!
                 </h2>
-                <p className="text-gray-600 dark:text-gray-300">
+                <p className="text-gray-600 dark:text-gray-300 hidden sm:block text-xl">
                   Here's an overview of your teaching activities and student progress.
                 </p>
               </div>
@@ -138,7 +141,7 @@ export default function InstructorDashboard() {
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-lg transition-colors"
               >
                 <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                {refreshing ? 'Refreshing...' : 'Refresh'}
+                {refreshing ? '' : ''}
               </button>
             </div>
           </div>
@@ -238,7 +241,7 @@ export default function InstructorDashboard() {
         </section>
 
         {/* Chart and Mini Calendar */}
-        <section className="mb-8">
+        <section className="mb-8" >
           <h2 className="text-xl font-semibold text-gray-700 dark:text-white mb-4">
             Monthly Enrollments & Live Sessions
           </h2>
@@ -246,8 +249,8 @@ export default function InstructorDashboard() {
             <div className="bg-white dark:bg-gray-800 shadow-md rounded-2xl p-6 min-h-[350px]">
               <MonthlyChart data={chartData} />
             </div>
-            <div className="bg-white dark:bg-gray-800 shadow-md rounded-2xl p-6 min-h-[350px]">
-              <CompactLiveSessionCalendar instructorId={instructorId} height={300} />
+            <div className="bg-white  dark:bg-gray-800 shadow-md rounded-2xl overflow-y-auto p-6 min-h-[350px]">
+              <CompactLiveSessionCalendar instructorId={instructorId} height={100} />
             </div>
           </div>
         </section>

@@ -256,17 +256,14 @@ const Profile = () => {
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-12 text-white">
             <div className="flex items-center space-x-6">
               <div className="relative">
-                {user.avatarUrl && user.avatarUrl !== '/uploads/default-avatar.png' ? (
-                  <img 
-                    src={`http://localhost:4000${user.avatarUrl}`} 
-                    alt="Profile" 
-                    className="w-24 h-24 rounded-full object-cover border-4 border-white/20"
-                  />
-                ) : (
-                  <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center text-3xl font-bold">
-                    {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
-                  </div>
-                )}
+                <img
+                  src={user?.avatarUrl?.startsWith('http') ? user.avatarUrl : `http://localhost:4000${user?.avatarUrl}`}
+                  alt={user?.name || 'Profile'}
+                  className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"
+                  onError={(e) => {
+                    e.target.src = '/logo192.png';
+                  }}
+                />
                 {editing && (
                   <label className="absolute -bottom-2 -right-2 bg-white text-gray-700 p-2 rounded-full shadow-lg hover:bg-gray-100 transition-colors cursor-pointer">
                     <Camera size={16} />

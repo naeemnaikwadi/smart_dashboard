@@ -5,11 +5,11 @@ import {
   AlertCircle, 
   Play, 
   Pause, 
-  Submit,
   ArrowLeft,
   ArrowRight,
   BookOpen,
-  Timer
+  Timer,
+  Send
 } from 'lucide-react';
 
 const QuizTaker = ({ quiz, onQuizCompleted, onCancel }) => {
@@ -151,21 +151,56 @@ const QuizTaker = ({ quiz, onQuizCompleted, onCancel }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:4000/api/quizzes/${quiz._id}/submit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          attemptId,
-          answers: Object.entries(answers).map(([questionId, answerData]) => ({
-            questionId,
-            answer: answerData.answer,
-            timeSpent: answerData.timeSpent || 0
-          }))
-        })
-      });
+
+      // Build multipart form if there are assignment uploads; else JSON
+      const hasAssignment = quiz.questions.some(q => q.type === 'assignment');
+
+      let response;
+      if (hasAssignment) {
+        const formData = new FormData();
+        formData.append('attemptId', attemptId);
+        const answerPayload = [];
+
+        quiz.questions.forEach((q) => {
+          const entry = answers[q._id];
+          if (!entry) return;
+          answerPayload.push({
+            questionId: q._id,
+            answer: entry.answer,
+            timeSpent: entry.timeSpent || 0
+          });
+          // If assignment and there is a File in entry.answer, attach as field assignment_<questionId>
+          if (q.type === 'assignment' && entry.answer instanceof File) {
+            formData.append(`assignment_${q._id}`, entry.answer);
+          }
+        });
+
+        formData.append('answers', JSON.stringify(answerPayload));
+
+        response = await fetch(`http://localhost:4000/api/quizzes/${quiz._id}/submit`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        });
+      } else {
+        response = await fetch(`http://localhost:4000/api/quizzes/${quiz._id}/submit`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            attemptId,
+            answers: Object.entries(answers).map(([questionId, answerData]) => ({
+              questionId,
+              answer: answerData.answer,
+              timeSpent: answerData.timeSpent || 0
+            }))
+          })
+        });
+      }
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -188,12 +223,11 @@ const QuizTaker = ({ quiz, onQuizCompleted, onCancel }) => {
 
   const getQuestionStatus = (index) => {
     const question = quiz.questions[index];
-    const hasAnswer = answers[question._id];
-    
-    if (hasAnswer) {
-      return 'answered';
-    }
-    return 'unanswered';
+    const entry = answers[question._id];
+    if (!entry) return 'unanswered';
+    const val = entry.answer;
+    const hasValue = (Array.isArray(val) && val.length > 0) || (val instanceof File) || (typeof val === 'string' && val.trim() !== '') || (typeof val === 'number' && !Number.isNaN(val));
+    return hasValue ? 'answered' : 'unanswered';
   };
 
   const currentQuestion = quiz.questions[currentQuestionIndex];
@@ -337,6 +371,18 @@ const QuizTaker = ({ quiz, onQuizCompleted, onCancel }) => {
               </div>
             )}
 
+            {currentQuestion.type === 'numerical' && (
+              <div className="space-y-3">
+                <input
+                  type="number"
+                  value={answers[currentQuestion._id]?.answer ?? ''}
+                  onChange={(e) => handleAnswerChange(currentQuestion._id, e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  placeholder="Enter a number"
+                />
+              </div>
+            )}
+
             {currentQuestion.type === 'long_answer' && (
               <div>
                 <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -351,6 +397,24 @@ const QuizTaker = ({ quiz, onQuizCompleted, onCancel }) => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                   placeholder="Type your answer here..."
                 />
+              </div>
+            )}
+
+            {currentQuestion.type === 'assignment' && (
+              <div className="space-y-3">
+                <input
+                  type="file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleAnswerChange(currentQuestion._id, file);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                />
+                {answers[currentQuestion._id]?.answer instanceof File && (
+                  <div className="text-sm text-gray-600 dark:text-gray-300">
+                    Selected: {answers[currentQuestion._id].answer.name}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -382,7 +446,7 @@ const QuizTaker = ({ quiz, onQuizCompleted, onCancel }) => {
                 disabled={answeredCount === 0}
                 className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Submit className="w-4 h-4" />
+                <Send className="w-4 h-4" />
                 Submit Quiz
               </button>
             )}
@@ -419,7 +483,7 @@ const QuizTaker = ({ quiz, onQuizCompleted, onCancel }) => {
                   </>
                 ) : (
                   <>
-                    <Submit className="w-4 h-4" />
+                    <Send className="w-4 h-4" />
                     Submit Quiz
                   </>
                 )}

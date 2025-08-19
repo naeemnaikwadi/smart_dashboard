@@ -42,6 +42,11 @@ const stepSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Quiz'
   },
+  // Gating: require completing this step (and quiz if present) before moving to next
+  requireCompletionToProceed: {
+    type: Boolean,
+    default: true
+  },
   quizRequired: {
     type: Boolean,
     default: false

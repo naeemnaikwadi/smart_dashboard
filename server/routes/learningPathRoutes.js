@@ -8,20 +8,10 @@ const { auth, instructorOnly } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const CloudinaryService = require('../services/cloudinaryService');
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, '../uploads/learning-paths');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
-  }
-});
+// Configure multer for memory storage (to get file buffer for Cloudinary)
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage: storage,
@@ -72,7 +62,10 @@ router.post('/', auth, instructorOnly, upload.any(), async (req, res) => {
         description: step.description,
         order: step.order,
         estimatedTime: step.estimatedTime || 30,
-        resources: []
+        resources: [],
+        // Persist quiz gating flags if provided
+        quizRequired: !!step.quizRequired,
+        requireCompletionToProceed: step.requireCompletionToProceed !== false
       };
 
       // Process resources for this step
@@ -91,8 +84,15 @@ router.post('/', auth, instructorOnly, upload.any(), async (req, res) => {
             const uploadedFile = req.files.find(file => file.fieldname === fileKey);
             
             if (uploadedFile) {
-              processedResource.uploadedFile = uploadedFile.path.replace(/\\/g, '/').replace('uploads/', '/uploads/');
+              // Upload to Cloudinary
+              const cloudinaryResult = await CloudinaryService.uploadFile(
+                uploadedFile.buffer, 
+                uploadedFile, 
+                'smart-learning/learning-paths'
+              );
+              processedResource.uploadedFile = cloudinaryResult.cloudinaryUrl;
               processedResource.fileSize = uploadedFile.size;
+              processedResource.cloudinaryId = cloudinaryResult.cloudinaryId;
             }
           } else if (resource.type === 'link') {
             processedResource.link = resource.link;
@@ -436,22 +436,31 @@ router.put('/:id/end-session', auth, async (req, res) => {
 router.get('/:id/progress', auth, async (req, res) => {
   try {
     const learningPathId = req.params.id;
-    
-    const progress = await Progress.findOne({ 
-      learnerId: req.user.id, 
-      learningPathId 
-    });
-    
-    if (!progress) {
+
+    const path = await LearningPath.findById(learningPathId);
+    if (!path) {
+      return res.status(404).json({ error: 'Learning path not found' });
+    }
+
+    // Find or initialize learner progress within the learning path
+    const learner = (path.learners || []).find(l => l.learnerId.toString() === req.user.id);
+    if (!learner) {
       return res.json({
         overallProgress: 0,
         timeSpent: 0,
-        readingSessions: [],
+        completedSteps: [],
+        quizResults: [],
         lastAccessed: null
       });
     }
-    
-    res.json(progress);
+
+    return res.json({
+      overallProgress: learner.progress || 0,
+      timeSpent: learner.timeSpent || 0,
+      completedSteps: learner.completedSteps || [],
+      quizResults: learner.quizResults || [],
+      lastAccessed: learner.lastAccessed || null
+    });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Server Error' });
@@ -463,27 +472,50 @@ router.get('/:id/progress', auth, async (req, res) => {
 // @access  Private
 router.put('/:id/update-progress', auth, async (req, res) => {
   try {
-    const { progressPercentage } = req.body;
+    const { progressPercentage, completedSteps = [], timeSpent = 0 } = req.body;
     const learningPathId = req.params.id;
-    
-    let progress = await Progress.findOne({ 
-      learnerId: req.user.id, 
-      learningPathId 
-    });
-    
-    if (!progress) {
-      progress = new Progress({
-        learnerId: req.user.id,
-        learningPathId
-      });
+
+    const path = await LearningPath.findById(learningPathId);
+    if (!path) {
+      return res.status(404).json({ error: 'Learning path not found' });
     }
-    
-    progress.updateProgress(progressPercentage);
-    await progress.save();
-    
-    res.json({ 
-      message: 'Progress updated',
-      progress: progress.overallProgress
+
+    // Find learner index
+    const idx = (path.learners || []).findIndex(l => l.learnerId.toString() === req.user.id);
+    const uniqueCompleted = Array.from(new Set((completedSteps || []).map(n => Number(n)))).sort((a,b)=>a-b);
+
+    const totalSteps = path.steps?.length || 0;
+    const computedProgress = totalSteps > 0 ? Math.min(100, Math.round((uniqueCompleted.length / totalSteps) * 100)) : (progressPercentage || 0);
+
+    if (idx === -1) {
+      path.learners.push({
+        learnerId: req.user.id,
+        progress: computedProgress,
+        timeSpent: Number(timeSpent) || 0,
+        startedAt: new Date(),
+        lastAccessed: new Date(),
+        completedSteps: uniqueCompleted,
+        quizResults: []
+      });
+    } else {
+      path.learners[idx].progress = computedProgress;
+      path.learners[idx].timeSpent = Number(timeSpent) || path.learners[idx].timeSpent || 0;
+      path.learners[idx].lastAccessed = new Date();
+      // merge completed steps
+      const merged = Array.from(new Set([...(path.learners[idx].completedSteps || []), ...uniqueCompleted])).sort((a,b)=>a-b);
+      path.learners[idx].completedSteps = merged;
+    }
+
+    await path.save();
+
+    const learner = idx === -1 ? path.learners[path.learners.length - 1] : path.learners[idx];
+
+    res.json({
+      overallProgress: learner.progress,
+      timeSpent: learner.timeSpent,
+      completedSteps: learner.completedSteps,
+      quizResults: learner.quizResults || [],
+      lastAccessed: learner.lastAccessed
     });
   } catch (err) {
     console.error(err.message);

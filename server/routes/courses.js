@@ -243,7 +243,7 @@ router.delete('/:id', auth, instructorOnly, async (req, res) => {
 // @access  Private (Instructor)
 router.post('/:id/materials', auth, instructorOnly, async (req, res) => {
     try {
-        const { title, type, url, fileName, fileSize } = req.body;
+        const { title, type, url, fileName, fileSize, cloudinaryId, cloudinaryUrl } = req.body;
         
         const course = await Course.findById(req.params.id);
         if (!course) {
@@ -255,12 +255,18 @@ router.post('/:id/materials', auth, instructorOnly, async (req, res) => {
             return res.status(403).json({ message: 'Not authorized to add materials to this course' });
         }
         
+        // Always store only secure_url in `url` and mark as Cloudinary
+        const secureUrl = cloudinaryUrl || url || '';
         const newMaterial = {
             title,
             type,
-            url,
+            url: secureUrl,
             fileName,
-            fileSize
+            fileSize,
+            // Keep cloudinaryId for management if provided, but do not rely on it for delivery
+            cloudinaryId: cloudinaryId || undefined,
+            cloudinaryUrl: undefined,
+            isCloudinary: true
         };
         
         course.materials.push(newMaterial);

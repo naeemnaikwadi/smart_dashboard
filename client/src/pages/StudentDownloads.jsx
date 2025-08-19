@@ -124,7 +124,8 @@ const StudentDownloads = () => {
                   courseName: path.courseName || 'Unknown Course',
                   classroomName: path.classroomName || 'Unknown Classroom',
                   pathName: path.title,
-                  downloadCount: resource.downloadCount || 0
+                  downloadCount: resource.downloadCount || 0,
+                  cloudinaryUrl: resource.cloudinaryUrl || null // Add cloudinaryUrl
                 });
               }
             });
@@ -167,15 +168,37 @@ const StudentDownloads = () => {
 
   const handleDownload = (material) => {
     const link = document.createElement('a');
-    link.href = `http://localhost:4000/uploads/${material.filename}`;
+    // Use Cloudinary URL if available, otherwise fallback to local path
+    let downloadUrl = material.cloudinaryUrl || material.uploadedFile || `http://localhost:4000/uploads/${material.filename}`;
+    if (downloadUrl.includes('res.cloudinary.com')) {
+      downloadUrl = downloadUrl.replace('/document/upload/', '/raw/upload/');
+      if ((material.type === 'pdf' || (material.mimetype || '').includes('pdf')) && !/\.pdf(\?|#|$)/i.test(downloadUrl)) {
+        const parts = downloadUrl.split(/(?=[?#])/);
+        downloadUrl = `${parts[0]}.pdf${parts[1] || ''}`;
+      }
+    }
+    link.href = downloadUrl;
     link.download = material.originalName || material.filename;
+    link.target = '_blank';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   const handleView = (material) => {
-    setSelectedDocument([material]);
+    // Prepare material data for FileViewer
+    const fileData = {
+      filename: material.originalName || material.filename,
+      originalName: material.originalName || material.filename,
+      url: material.cloudinaryUrl || material.uploadedFile,
+      path: material.cloudinaryUrl || material.uploadedFile,
+      cloudinaryUrl: material.cloudinaryUrl || material.uploadedFile,
+      size: material.size || 0,
+      mimetype: material.type || 'application/octet-stream',
+      fileType: material.type || 'application/octet-stream'
+    };
+    
+    setSelectedDocument([fileData]);
     setShowDocumentViewer(true);
   };
 

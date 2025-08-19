@@ -7,21 +7,10 @@ const { auth, instructorOnly } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const CloudinaryService = require('../services/cloudinaryService');
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, '../uploads/quiz-questions');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
-    // cb(null, Date.now() + '-' + file.originalname);
-  }
-});
+// Configure multer for memory storage (to get file buffer for Cloudinary)
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage: storage,
@@ -69,10 +58,15 @@ router.post('/', auth, instructorOnly, upload.single('questionFile'), async (req
 
     // Process file upload if provided
     if (req.file) {
-      // Handle file upload for questions
-      // This could be a CSV, Excel, or text file with questions
-      // For now, we'll store the file path and let the frontend handle parsing
-      const questionFile = req.file.path.replace(/\\/g, '/').replace('uploads/', '/uploads/');
+      // Upload file to Cloudinary
+      const cloudinaryResult = await CloudinaryService.uploadFile(
+        req.file.buffer, 
+        req.file, 
+        'smart-learning/quizzes'
+      );
+      
+      // Store Cloudinary URL instead of local path
+      const questionFile = cloudinaryResult.cloudinaryUrl;
       
       // You can add logic here to parse different file formats
       // For now, we'll require manual question creation
@@ -101,9 +95,23 @@ router.post('/', auth, instructorOnly, upload.single('questionFile'), async (req
           throw new Error(`Question ${index + 1}: Options are required for MCQ/multiple choice questions`);
         }
         processedQuestion.options = question.options;
-        processedQuestion.correctAnswer = question.correctAnswer;
+        // For MCQ ensure correctAnswer is a single option text
+        if (question.type === 'mcq') {
+          const correct = (question.options || []).find(o => o.isCorrect);
+          processedQuestion.correctAnswer = question.correctAnswer || (correct ? correct.text : '');
+        } else {
+          processedQuestion.correctAnswer = question.correctAnswer || '';
+        }
       } else if (question.type === 'long_answer') {
         processedQuestion.longAnswerGuidelines = question.longAnswerGuidelines || '';
+      } else if (question.type === 'numerical') {
+        if (question.numericAnswer === undefined || question.numericAnswer === null || question.numericAnswer === '') {
+          throw new Error(`Question ${index + 1}: Numeric answer is required for numerical questions`);
+        }
+        processedQuestion.numericAnswer = Number(question.numericAnswer);
+        processedQuestion.numericTolerance = Number(question.numericTolerance || 0);
+      } else if (question.type === 'assignment') {
+        processedQuestion.requiresUpload = question.requiresUpload !== false;
       }
 
       return processedQuestion;
@@ -228,17 +236,18 @@ router.get('/:id', auth, async (req, res) => {
       }
     }
 
-    // For students, don't send correct answers
+    // For students, don't send correct answers or isCorrect flags
     if (!isInstructor) {
-      const studentQuiz = {
-        ...quiz.toObject(),
-        questions: quiz.questions.map(q => ({
-          ...q,
-          correctAnswer: undefined,
-          explanation: undefined
-        }))
-      };
-      return res.json(studentQuiz);
+      const quizObj = quiz.toObject();
+      quizObj.questions = quizObj.questions.map(q => ({
+        ...q,
+        correctAnswer: undefined,
+        explanation: undefined,
+        options: Array.isArray(q.options)
+          ? q.options.map(opt => ({ text: opt.text }))
+          : undefined
+      }));
+      return res.json(quizObj);
     }
 
     res.json(quiz);
@@ -318,9 +327,13 @@ router.post('/:id/start', auth, async (req, res) => {
 // @route   POST api/quizzes/:id/submit
 // @desc    Submit quiz answers
 // @access  Private
-router.post('/:id/submit', auth, async (req, res) => {
+// Allow file uploads for assignment-type answers
+router.post('/:id/submit', auth, upload.any(), async (req, res) => {
   try {
-    const { attemptId, answers } = req.body;
+    // Answers may come as JSON string when multipart/form-data is used
+    const rawAnswers = req.body.answers;
+    const { attemptId } = req.body;
+    const answers = typeof rawAnswers === 'string' ? JSON.parse(rawAnswers) : rawAnswers;
     const quizId = req.params.id;
 
     const quiz = await Quiz.findById(quizId);
@@ -341,49 +354,110 @@ router.post('/:id/submit', auth, async (req, res) => {
       return res.status(400).json({ error: 'Quiz already completed' });
     }
 
+    // Index uploaded files by fieldname for easy lookup
+    const uploadedFilesByField = (req.files || []).reduce((acc, file) => {
+      acc[file.fieldname] = file;
+      return acc;
+    }, {});
+
     // Process answers and calculate scores
-    const processedAnswers = answers.map(answer => {
-      const question = quiz.questions.id(answer.questionId);
+    const processedAnswers = answers.map(raw => {
+      const question = quiz.questions.id(raw.questionId);
       if (!question) return null;
 
       let isCorrect = false;
       let pointsEarned = 0;
       let feedback = '';
+      let answerPayload = raw.answer;
 
-      if (question.type === 'mcq' || question.type === 'multiple_choice') {
-        isCorrect = answer.answer === question.correctAnswer;
+      if (question.type === 'mcq') {
+        const expected = (question.correctAnswer || '').trim();
+        const given = typeof raw.answer === 'string' ? raw.answer.trim() : '';
+        isCorrect = expected && given && expected === given;
         pointsEarned = isCorrect ? question.points : 0;
-        feedback = isCorrect ? 'Correct!' : `Incorrect. The correct answer is: ${question.correctAnswer}`;
-      } else if (question.type === 'long_answer') {
-        // For long answer, instructor needs to grade manually
-        // For now, we'll give partial credit based on answer length
-        const answerLength = answer.answer.length;
-        if (answerLength > 100) {
-          pointsEarned = question.points * 0.8;
-          feedback = 'Good effort. Instructor will review for final grade.';
-        } else if (answerLength > 50) {
-          pointsEarned = question.points * 0.5;
-          feedback = 'Basic answer. Instructor will review for final grade.';
-        } else {
-          pointsEarned = 0;
-          feedback = 'Answer too short. Instructor will review.';
+        feedback = isCorrect ? 'Correct!' : 'Incorrect.';
+      } else if (question.type === 'multiple_choice') {
+        // Compare sets of correct options
+        const expectedOptions = (question.options || []).filter(o => o.isCorrect).map(o => (o.text || '').trim()).sort();
+        const givenArray = Array.isArray(raw.answer) ? raw.answer.map(v => (v || '').trim()) : [];
+        const givenSorted = [...new Set(givenArray)].sort();
+        isCorrect = expectedOptions.length === givenSorted.length && expectedOptions.every((v, i) => v === givenSorted[i]);
+        pointsEarned = isCorrect ? question.points : 0;
+        feedback = isCorrect ? 'Correct!' : 'Incorrect.';
+        // Normalize stored answer
+        answerPayload = givenSorted;
+      } else if (question.type === 'numerical') {
+        const expected = Number(question.numericAnswer);
+        const tolerance = Number(question.numericTolerance || 0);
+        const given = Number(raw.answer);
+        if (!Number.isNaN(given) && !Number.isNaN(expected)) {
+          isCorrect = Math.abs(given - expected) <= tolerance;
         }
-        isCorrect = false; // Long answers need manual grading
+        pointsEarned = isCorrect ? question.points : 0;
+        feedback = isCorrect ? 'Correct value.' : `Expected approximately ${expected} ± ${tolerance}.`;
+        answerPayload = given;
+      } else if (question.type === 'assignment') {
+        // Expect a file field named assignment_<questionId>
+        const fieldName = `assignment_${String(raw.questionId)}`;
+        const file = uploadedFilesByField[fieldName];
+        if (file) {
+          // Upload to Cloudinary
+          // Store Cloudinary URL in answer payload
+          answerPayload = { fileName: file.originalname };
+          // upload
+          // Note: await sequentially to keep code simple
+          // eslint-disable-next-line no-async-promise-executor
+        }
+        pointsEarned = 0;
+        isCorrect = false;
+        feedback = 'Assignment submitted for instructor review.';
+      } else if (question.type === 'long_answer') {
+        // Manual grading only
+        pointsEarned = 0;
+        isCorrect = false;
+        feedback = 'Answer submitted. Instructor will review and grade.';
       }
 
       return {
-        questionId: answer.questionId,
-        answer: answer.answer,
+        questionId: raw.questionId,
+        answer: answerPayload,
         isCorrect,
         pointsEarned,
         feedback,
-        timeSpent: answer.timeSpent || 0
+        timeSpent: raw.timeSpent || 0
       };
     }).filter(Boolean);
+
+    // Upload assignment files to Cloudinary and enrich answers (do uploads after mapping to avoid mixing async in map)
+    for (const ans of processedAnswers) {
+      const q = quiz.questions.id(ans.questionId);
+      if (q && q.type === 'assignment') {
+        const fieldName = `assignment_${String(ans.questionId)}`;
+        const file = uploadedFilesByField[fieldName];
+        if (file) {
+          const uploadRes = await CloudinaryService.uploadFile(file.buffer, file, 'smart-learning/assignments');
+          ans.answer = {
+            fileName: file.originalname,
+            fileSize: file.size,
+            cloudinaryId: uploadRes.cloudinaryId,
+            fileUrl: uploadRes.cloudinaryUrl
+          };
+        }
+      }
+    }
 
     // Update attempt with answers and complete it
     attempt.answers = processedAnswers;
     attempt.completeAttempt();
+
+    // Calculate totals and pass/fail against quiz passing score
+    attempt.answers = processedAnswers;
+    attempt.completeAttempt();
+    // Manually recompute aggregate scoring
+    const totalScore = processedAnswers.reduce((t, a) => t + (a.pointsEarned || 0), 0);
+    attempt.totalScore = totalScore;
+    attempt.percentage = Math.round((totalScore / (attempt.maxScore || 1)) * 100);
+    attempt.passed = attempt.percentage >= (quiz.passingScore || 70);
 
     await attempt.save();
 
@@ -401,6 +475,7 @@ router.post('/:id/submit', auth, async (req, res) => {
             bestScore: attempt.totalScore,
             attempts: attempt.attemptNumber,
             passed: attempt.passed,
+            percentage: attempt.percentage,
             lastAttemptDate: new Date()
           }
         }
@@ -414,6 +489,98 @@ router.post('/:id/submit', auth, async (req, res) => {
       percentage: attempt.percentage,
       passed: attempt.passed,
       feedback: attempt.feedback
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server Error' });
+  }
+});
+
+// @route   GET api/quizzes/attempts/:attemptId
+// @desc    Get a single attempt (instructor only)
+// @access  Private (Instructor)
+router.get('/attempts/:attemptId', auth, instructorOnly, async (req, res) => {
+  try {
+    const attempt = await QuizAttempt.findById(req.params.attemptId);
+    if (!attempt) {
+      return res.status(404).json({ error: 'Attempt not found' });
+    }
+    const quiz = await Quiz.findById(attempt.quizId);
+    if (!quiz) {
+      return res.status(404).json({ error: 'Quiz not found' });
+    }
+    if (quiz.instructorId.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    res.json(attempt);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server Error' });
+  }
+});
+
+// @route   PUT api/quizzes/attempts/:attemptId/grade
+// @desc    Grade answers for an attempt (long_answer/assignment) and finalize scores
+// @access  Private (Instructor)
+router.put('/attempts/:attemptId/grade', auth, instructorOnly, async (req, res) => {
+  try {
+    const { grades } = req.body; // [{questionId, pointsEarned, feedback}]
+    const attempt = await QuizAttempt.findById(req.params.attemptId);
+    if (!attempt) {
+      return res.status(404).json({ error: 'Attempt not found' });
+    }
+    const quiz = await Quiz.findById(attempt.quizId);
+    if (!quiz) {
+      return res.status(404).json({ error: 'Quiz not found' });
+    }
+    if (quiz.instructorId.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const gradeMap = new Map((grades || []).map(g => [String(g.questionId), g]));
+
+    attempt.answers = attempt.answers.map(ans => {
+      const g = gradeMap.get(String(ans.questionId));
+      if (g && typeof g.pointsEarned === 'number') {
+        ans.pointsEarned = g.pointsEarned;
+        if (typeof g.feedback === 'string') ans.feedback = g.feedback;
+      }
+      return ans;
+    });
+
+    // Recompute totals and pass/fail
+    const totalScore = attempt.answers.reduce((t, a) => t + (a.pointsEarned || 0), 0);
+    attempt.totalScore = totalScore;
+    attempt.percentage = Math.round((totalScore / (attempt.maxScore || 1)) * 100);
+    attempt.passed = attempt.percentage >= (quiz.passingScore || 70);
+    await attempt.save();
+
+    // Update learning path learner quizResults (append a new record)
+    await LearningPath.updateOne(
+      {
+        _id: attempt.learningPathId,
+        'learners.learnerId': attempt.studentId
+      },
+      {
+        $push: {
+          'learners.$.quizResults': {
+            stepId: attempt.stepId,
+            quizId: attempt.quizId,
+            bestScore: attempt.totalScore,
+            attempts: attempt.attemptNumber,
+            passed: attempt.passed,
+            percentage: attempt.percentage,
+            lastAttemptDate: new Date()
+          }
+        }
+      }
+    );
+
+    res.json({
+      message: 'Attempt graded successfully',
+      score: attempt.totalScore,
+      percentage: attempt.percentage,
+      passed: attempt.passed
     });
   } catch (err) {
     console.error(err.message);

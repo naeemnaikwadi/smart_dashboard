@@ -352,10 +352,13 @@ export default function StudentDashboard() {
               {/* Profile Section */}
               <div className="relative">
                 {localStorage.getItem('user') && JSON.parse(localStorage.getItem('user')).avatarUrl ? (
-                  <img 
-                    src={`http://localhost:4000${JSON.parse(localStorage.getItem('user')).avatarUrl}`} 
-                    alt="Profile" 
+                  <img
+                    src={JSON.parse(localStorage.getItem('user')).avatarUrl?.startsWith('http') ? JSON.parse(localStorage.getItem('user')).avatarUrl : `http://localhost:4000${JSON.parse(localStorage.getItem('user')).avatarUrl}`}
+                    alt={JSON.parse(localStorage.getItem('user')).name || 'Student'}
                     className="w-16 h-16 rounded-full object-cover border-4 border-white shadow-lg"
+                    onError={(e) => {
+                      e.target.src = '/logo192.png';
+                    }}
                   />
                 ) : (
                   <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-2xl font-bold text-white border-4 border-white shadow-lg">
@@ -368,7 +371,7 @@ export default function StudentDashboard() {
                 <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">
                   Welcome, {localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).name || localStorage.getItem('userName') || 'Student' : 'Student'}!
                 </h2>
-                <p className="text-gray-600 dark:text-gray-300">Here's a quick overview of your progress and actions.</p>
+                <p className="text-gray-600 dark:text-gray-300 hidden sm:block text-xl">Here's a quick overview of your progress and actions.</p>
               </div>
             </div>
             
@@ -384,7 +387,7 @@ export default function StudentDashboard() {
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-lg transition-colors"
               >
                 <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                {refreshing ? 'Refreshing...' : 'Refresh'}
+                {refreshing ? '' : ''}
               </button>
             </div>
           </div>

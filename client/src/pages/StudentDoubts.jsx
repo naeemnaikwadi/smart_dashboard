@@ -480,10 +480,13 @@ export default function StudentDoubts() {
                             <div className="flex gap-2">
                               {doubt.images.map((image, index) => (
                                 <img
-                                  key={index}
-                                  src={`http://localhost:4000${image.url}`}
-                                  alt={image.fileName}
-                                  className="w-16 h-16 object-cover rounded border border-gray-200 dark:border-gray-600"
+                                  key={`${doubt._id}-image-${index}`}
+                                  src={image.url}
+                                  alt={`Doubt image ${index + 1}`}
+                                  className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                  }}
                                 />
                               ))}
                             </div>
@@ -508,7 +511,7 @@ export default function StudentDoubts() {
                                   {doubt.answer.attachments.map((attachment, index) => (
                                     <a
                                       key={index}
-                                      href={`http://localhost:4000${attachment.url}`}
+                                      href={attachment.url}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-700 border border-green-200 dark:border-green-600 rounded-lg hover:bg-green-100 dark:hover:bg-green-800 transition-colors"

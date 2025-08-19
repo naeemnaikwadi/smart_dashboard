@@ -8,15 +8,26 @@ const questionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['mcq', 'multiple_choice', 'long_answer'],
+    enum: ['mcq', 'multiple_choice', 'long_answer', 'numerical', 'assignment'],
     required: true
   },
   options: [{
     text: String,
     isCorrect: Boolean
   }],
-  correctAnswer: String, // For MCQ and multiple choice
+  correctAnswer: String, // For MCQ/multiple (comma-separated for multiple)
   longAnswerGuidelines: String, // For long answer questions
+  // Numerical question support
+  numericAnswer: Number,
+  numericTolerance: {
+    type: Number,
+    default: 0
+  },
+  // Assignment upload indicator
+  requiresUpload: {
+    type: Boolean,
+    default: false
+  },
   points: {
     type: Number,
     default: 1

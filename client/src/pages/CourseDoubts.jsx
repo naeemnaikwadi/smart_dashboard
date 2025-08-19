@@ -427,9 +427,12 @@ export default function CourseDoubts() {
                             {doubt.images.map((image, index) => (
                               <div key={index} className="relative">
                                 <img
-                                  src={`http://localhost:4000${image.url}`}
+                                  src={image.url}
                                   alt={`Doubt image ${index + 1}`}
                                   className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                  }}
                                 />
                               </div>
                             ))}
@@ -457,7 +460,7 @@ export default function CourseDoubts() {
                                   {doubt.answer.attachments.map((attachment, index) => (
                                     <a
                                       key={index}
-                                      href={`http://localhost:4000${attachment.url}`}
+                                      href={attachment.url}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"

@@ -52,8 +52,8 @@ const CompactLiveSessionCalendar = ({ instructorId, height = 220 }) => {
   const today = new Date();
 
   return (
-    <div style={{ height, width: '100%' }} className="flex flex-col">
-      <div className="flex items-center justify-between w-full mb-3">
+    <div style={{ height , width: '100%' }} className="flex flex-col">
+      <div className="flex items-center justify-between w-full ">
         <button
           className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           onClick={() => setCurrentDate(new Date(year, month - 1, 1))}

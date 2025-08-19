@@ -20,6 +20,11 @@ import {
 import DashboardLayout from '../components/DashboardLayout';
 import DocumentViewer from '../components/DocumentViewer';
 import StepWiseAssessment from '../components/StepWiseAssessment';
+import QuizTaker from '../components/QuizTaker';
+import QuizResults from '../components/QuizResults';
+import QuizCreator from '../components/QuizCreator';
+import QuizAttemptsModal from '../components/QuizAttemptsModal';
+import { getCurrentUser } from '../utils/auth';
 
 const LearningSession = () => {
   const { pathId } = useParams();
@@ -35,6 +40,15 @@ const LearningSession = () => {
   const [showAssessment, setShowAssessment] = useState(false);
   const [userProgress, setUserProgress] = useState({});
   const [completedSteps, setCompletedSteps] = useState(new Set());
+  const [availableQuizzes, setAvailableQuizzes] = useState([]);
+  const [activeQuiz, setActiveQuiz] = useState(null);
+  const [quizResults, setQuizResults] = useState(null);
+  const [lastQuiz, setLastQuiz] = useState(null);
+  const [showQuizCreator, setShowQuizCreator] = useState(false);
+  const [editingQuiz, setEditingQuiz] = useState(null);
+  const [showAttempts, setShowAttempts] = useState(false);
+  const currentUser = getCurrentUser();
+  const isInstructor = currentUser?.role === 'instructor';
 
   useEffect(() => {
     loadLearningPath();
@@ -62,6 +76,17 @@ const LearningSession = () => {
       if (response.ok) {
         const data = await response.json();
         setLearningPath(data);
+        // Load quizzes for this learning path
+        try {
+          const token = localStorage.getItem('token');
+          const quizResp = await fetch(`http://localhost:4000/api/quizzes/learning-path/${data._id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (quizResp.ok) {
+            const quizzes = await quizResp.json();
+            setAvailableQuizzes(quizzes);
+          }
+        } catch (e) {}
         
         // Load user progress
         await loadUserProgress(data._id);
@@ -132,19 +157,44 @@ const LearningSession = () => {
 
   const handleNextStep = () => {
     if (currentStep < learningPath.steps.length - 1) {
+      const step = learningPath.steps[currentStep];
+      const stepQuiz = availableQuizzes.find(q => q.stepId === step._id);
+      const passedPreviously = Array.isArray(userProgress?.quizResults)
+        ? userProgress.quizResults.some(r => String(r.stepId) === String(step._id) && r.passed)
+        : false;
+      if (step?.hasQuiz && step?.quizRequired && stepQuiz && !((quizResults && quizResults.passed) || passedPreviously)) {
+        setActiveQuiz(stepQuiz);
+        return;
+      }
       markStepComplete(currentStep);
       setCurrentStep(currentStep + 1);
+      setQuizResults(null);
+      setLastQuiz(null);
     }
   };
 
   const handlePreviousStep = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+      setQuizResults(null);
+      setLastQuiz(null);
     }
   };
 
   const handleCompleteSession = async () => {
     try {
+      // If final step has required quiz, enforce pass before completion
+      const lastIndex = learningPath.steps.length - 1;
+      const step = learningPath.steps[lastIndex];
+      const stepQuiz = availableQuizzes.find(q => q.stepId === step?._id);
+      const passedPreviously = Array.isArray(userProgress?.quizResults)
+        ? userProgress.quizResults.some(r => String(r.stepId) === String(step._id) && r.passed)
+        : false;
+      if (step?.hasQuiz && step?.quizRequired && stepQuiz && !passedPreviously) {
+        setActiveQuiz(stepQuiz);
+        return;
+      }
+
       // Mark final step as complete
       markStepComplete(currentStep);
 
@@ -198,12 +248,73 @@ const LearningSession = () => {
     }
   };
 
+  const startStepQuiz = () => {
+    const step = learningPath.steps[currentStep];
+    const stepQuiz = availableQuizzes.find(q => q.stepId === step._id);
+    if (stepQuiz) {
+      setActiveQuiz(stepQuiz);
+    }
+  };
+
+  const onQuizCompleted = (result) => {
+    setQuizResults(result);
+    setLastQuiz(activeQuiz);
+    setActiveQuiz(null);
+    // If passed, mark current step complete and refresh stored progress
+    if (result?.passed) {
+      markStepComplete(currentStep);
+      // Also refresh user progress from server
+      loadUserProgress(learningPath._id);
+    }
+  };
+
+  const openQuizCreator = () => {
+    const step = learningPath.steps[currentStep];
+    const stepQuiz = availableQuizzes.find(q => q.stepId === step._id) || null;
+    setEditingQuiz(stepQuiz);
+    setShowQuizCreator(true);
+  };
+
+  const deleteStepQuiz = async () => {
+    try {
+      const step = learningPath.steps[currentStep];
+      const stepQuiz = availableQuizzes.find(q => q.stepId === step?._id);
+      if (!stepQuiz) return;
+      const token = localStorage.getItem('token');
+      const resp = await fetch(`http://localhost:4000/api/quizzes/${stepQuiz._id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        await refreshQuizzes();
+      }
+    } catch (e) {}
+  };
+
+  const refreshQuizzes = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const quizResp = await fetch(`http://localhost:4000/api/quizzes/learning-path/${learningPath._id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (quizResp.ok) {
+        const quizzes = await quizResp.json();
+        setAvailableQuizzes(quizzes);
+      }
+    } catch (e) {}
+  };
+
   const viewMaterials = (resources) => {
-    const documents = resources.filter(resource => resource.uploadedFile).map(resource => ({
-      filename: resource.uploadedFile,
+    const documents = resources.filter(resource => resource.uploadedFile || resource.cloudinaryUrl).map(resource => ({
+      filename: resource.uploadedFile || resource.cloudinaryUrl,
       originalName: resource.title,
+      url: resource.cloudinaryUrl || resource.uploadedFile,
+      path: resource.cloudinaryUrl || resource.uploadedFile,
+      cloudinaryUrl: resource.cloudinaryUrl || resource.uploadedFile,
       type: resource.type,
       size: resource.fileSize || 0,
+      mimetype: resource.type || 'application/octet-stream',
+      fileType: resource.type || 'application/octet-stream',
       uploadedAt: new Date()
     }));
     
@@ -236,7 +347,7 @@ const LearningSession = () => {
 
   if (loading) {
     return (
-      <DashboardLayout role="student">
+      <DashboardLayout>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
@@ -246,7 +357,7 @@ const LearningSession = () => {
 
   if (error) {
     return (
-      <DashboardLayout role="student">
+      <DashboardLayout>
         <div className="text-center py-12">
           <div className="text-red-600 mb-4">{error}</div>
           <button
@@ -262,7 +373,7 @@ const LearningSession = () => {
 
   if (!learningPath) {
     return (
-      <DashboardLayout role="student">
+      <DashboardLayout>
         <div className="text-center py-12">
           <div className="text-red-600 mb-4">Learning path not found</div>
           <button
@@ -280,7 +391,7 @@ const LearningSession = () => {
   const progress = (completedSteps.size / learningPath.steps.length) * 100;
 
   return (
-    <DashboardLayout role="student">
+    <DashboardLayout>
       <div className="max-w-6xl mx-auto p-6">
         {/* Header */}
         <div className="mb-8">
@@ -326,26 +437,36 @@ const LearningSession = () => {
         {/* Step Navigation */}
         <div className="mb-6">
           <div className="flex gap-2 overflow-x-auto pb-2">
-            {learningPath.steps.map((step, index) => (
-              <button
-                key={index}
-                onClick={() => setCurrentStep(index)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                  index === currentStep
-                    ? 'bg-blue-600 text-white'
-                    : completedSteps.has(index)
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {completedSteps.has(index) ? (
-                  <CheckCircle className="w-4 h-4" />
-                ) : (
-                  <Target className="w-4 h-4" />
-                )}
-                <span>Step {index + 1}</span>
-              </button>
-            ))}
+            {learningPath.steps.map((step, index) => {
+              const canAccess = index === 0 || completedSteps.has(index - 1) || completedSteps.has(index);
+              const isActive = index === currentStep;
+              const isCompleted = completedSteps.has(index);
+              return (
+                <button
+                  key={index}
+                  onClick={() => {
+                    if (canAccess) setCurrentStep(index);
+                  }}
+                  disabled={!canAccess}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                    isActive
+                      ? 'bg-blue-600 text-white'
+                      : isCompleted
+                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                      : canAccess
+                      ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  {isCompleted ? (
+                    <CheckCircle className="w-4 h-4" />
+                  ) : (
+                    <Target className="w-4 h-4" />
+                  )}
+                  <span>Step {index + 1}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -433,23 +554,70 @@ const LearningSession = () => {
               Previous
             </button>
 
-            {currentStep === learningPath.steps.length - 1 ? (
-              <button
-                onClick={handleCompleteSession}
-                className="flex items-center gap-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-              >
-                Complete Learning Path
-                <Award className="w-5 h-5" />
-              </button>
-            ) : (
-              <button
-                onClick={handleNextStep}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-              >
-                Next Step
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {(() => {
+                const step = learningPath.steps[currentStep];
+                const isLast = currentStep === (learningPath.steps.length - 1);
+                const stepQuiz = availableQuizzes.find(q => q.stepId === step?._id);
+                return (
+                  <div className="flex items-center gap-2">
+                    {isInstructor && (
+                      <button
+                        onClick={openQuizCreator}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-lg transition-colors"
+                      >
+                        {stepQuiz ? (isLast ? 'Edit Final Quiz' : 'Edit Quiz') : (isLast ? 'Create Final Quiz' : 'Create Quiz')}
+                      </button>
+                    )}
+                    {isInstructor && stepQuiz && (
+                      <button
+                        onClick={() => setShowAttempts(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+                      >
+                        View Attempts
+                      </button>
+                    )}
+                    {isInstructor && stepQuiz && (
+                      <button
+                        onClick={deleteStepQuiz}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                      >
+                        Delete Quiz
+                      </button>
+                    )}
+                    {step?.hasQuiz && stepQuiz && (
+                      <button
+                        onClick={startStepQuiz}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+                      >
+                        {isLast ? 'Take Final Quiz' : 'Take Step Quiz'}
+                      </button>
+                    )}
+                    {(!stepQuiz && step?.quizRequired && !isInstructor) && (
+                      <span className="text-sm text-red-600">Quiz not available yet</span>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {currentStep === learningPath.steps.length - 1 ? (
+                <button
+                  onClick={handleCompleteSession}
+                  className="flex items-center gap-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                >
+                  Complete Learning Path
+                  <Award className="w-5 h-5" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleNextStep}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                >
+                  Next Step
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -482,6 +650,58 @@ const LearningSession = () => {
           }}
         />
       )}
+
+      {activeQuiz && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-5xl relative max-h-[90vh] overflow-y-auto p-4">
+            <QuizTaker
+              quiz={activeQuiz}
+              onQuizCompleted={onQuizCompleted}
+              onCancel={() => setActiveQuiz(null)}
+            />
+          </div>
+        </div>
+      )}
+
+      {quizResults && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-4xl relative max-h-[90vh] overflow-y-auto p-4">
+            <QuizResults
+              results={quizResults}
+              quiz={lastQuiz || { title: 'Step Quiz', questions: [] }}
+              onClose={() => setQuizResults(null)}
+            />
+          </div>
+        </div>
+      )}
+
+      {showQuizCreator && isInstructor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-4xl relative max-h-[90vh] overflow-y-auto p-4">
+            <QuizCreator
+              learningPathId={learningPath._id}
+              stepId={learningPath.steps[currentStep]._id}
+              existingQuiz={editingQuiz}
+              onCancel={() => setShowQuizCreator(false)}
+              onQuizCreated={async () => {
+                setShowQuizCreator(false);
+                await refreshQuizzes();
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {showAttempts && isInstructor && (() => {
+        const step = learningPath.steps[currentStep];
+        const stepQuiz = availableQuizzes.find(q => q.stepId === step?._id);
+        if (!stepQuiz) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+            <QuizAttemptsModal quizId={stepQuiz._id} onClose={() => setShowAttempts(false)} />
+          </div>
+        );
+      })()}
 
       {/* Assessment Modal */}
       {showAssessment && (

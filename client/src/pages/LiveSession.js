@@ -25,7 +25,7 @@ export default function LiveSession() {
       });
 
       // 3. Generate join link for students
-      const joinUrl = `http://localhost:3000/student/join/${form.title}/Alice`;
+      const joinUrl = `http://localhost:4000/student/join/${form.title}/Alice`;
       setJoinLink(joinUrl);
       setStatus('✅ Session created successfully!');
       setForm({ title: '', description: '', date: '' });

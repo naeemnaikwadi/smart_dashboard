@@ -35,6 +35,11 @@ const QuizCreator = ({
     options: [{ text: '', isCorrect: false }],
     correctAnswer: '',
     longAnswerGuidelines: '',
+    // numerical
+    numericAnswer: '',
+    numericTolerance: 0,
+    // assignment
+    requiresUpload: false,
     points: 1,
     difficulty: 'medium',
     explanation: ''
@@ -48,6 +53,8 @@ const QuizCreator = ({
   const questionTypes = [
     { value: 'mcq', label: 'Multiple Choice (Single Answer)', icon: <CheckCircle className="w-4 h-4" /> },
     { value: 'multiple_choice', label: 'Multiple Choice (Multiple Answers)', icon: <CheckCircle className="w-4 h-4" /> },
+    { value: 'numerical', label: 'Numerical Value', icon: <CheckCircle className="w-4 h-4" /> },
+    { value: 'assignment', label: 'Upload Assignment', icon: <Upload className="w-4 h-4" /> },
     { value: 'long_answer', label: 'Long Answer/Essay', icon: <FileText className="w-4 h-4" /> }
   ];
 
@@ -83,6 +90,14 @@ const QuizCreator = ({
       return;
     }
 
+    if (currentQuestion.type === 'numerical') {
+      const val = Number(currentQuestion.numericAnswer);
+      if (Number.isNaN(val)) {
+        setError('Provide a numeric correct answer');
+        return;
+      }
+    }
+
     const newQuestion = {
       ...currentQuestion,
       id: Date.now().toString()
@@ -100,6 +115,9 @@ const QuizCreator = ({
       options: [{ text: '', isCorrect: false }],
       correctAnswer: '',
       longAnswerGuidelines: '',
+      numericAnswer: '',
+      numericTolerance: 0,
+      requiresUpload: false,
       points: 1,
       difficulty: 'medium',
       explanation: ''
@@ -371,7 +389,7 @@ const QuizCreator = ({
         <input
           type="file"
           onChange={handleFileUpload}
-          accept=".csv,.xlsx,.xls,.txt,.doc,.docx"
+          accept=".csv,.xlsx,.xls,.txt,.doc,.docx,.pdf,.zip"
           className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900 dark:file:text-blue-300"
         />
       </div>
@@ -474,6 +492,52 @@ const QuizCreator = ({
                 <Plus className="w-4 h-4 inline mr-1" />
                 Add Option
               </button>
+            </div>
+          )}
+
+          {/* Numerical Settings */}
+          {currentQuestion.type === 'numerical' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Correct Numerical Answer *
+                </label>
+                <input
+                  type="number"
+                  value={currentQuestion.numericAnswer}
+                  onChange={(e) => setCurrentQuestion({ ...currentQuestion, numericAnswer: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  placeholder="e.g., 3.14"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Tolerance (±)
+                </label>
+                <input
+                  type="number"
+                  value={currentQuestion.numericTolerance}
+                  onChange={(e) => setCurrentQuestion({ ...currentQuestion, numericTolerance: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  step="0.0001"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Assignment Settings */}
+          {currentQuestion.type === 'assignment' && (
+            <div className="mb-4">
+              <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={currentQuestion.requiresUpload}
+                  onChange={(e) => setCurrentQuestion({ ...currentQuestion, requiresUpload: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                />
+                Require student file upload
+              </label>
             </div>
           )}
 
@@ -581,6 +645,18 @@ const QuizCreator = ({
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {question.type === 'numerical' && (
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    <strong>Answer:</strong> {question.numericAnswer} (± {question.numericTolerance || 0})
+                  </div>
+                )}
+
+                {question.type === 'assignment' && (
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    <strong>Requires upload:</strong> {question.requiresUpload ? 'Yes' : 'No'}
                   </div>
                 )}
               </div>

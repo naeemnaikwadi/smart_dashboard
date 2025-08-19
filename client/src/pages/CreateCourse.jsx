@@ -1,8 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { BookOpen, Upload, Star, Users, Clock, Calendar, FileText, X, Plus, Save, ArrowLeft, Target, Tag } from 'lucide-react';
+import { getCurrentUser, getAuthHeaders } from '../utils/auth';
+import { uploadMultipleToCloudinary } from '../utils/cloudinaryUpload';
 import DashboardLayout from '../components/DashboardLayout';
+import { 
+  BookOpen, 
+  Users, 
+  Clock, 
+  Star, 
+  Upload, 
+  X, 
+  ArrowLeft, 
+  Target, 
+  Plus, 
+  FileText, 
+  Tag, 
+  Save 
+} from 'lucide-react';
 
 const CreateCourse = () => {
   const { classroomId } = useParams();
@@ -34,10 +48,19 @@ const CreateCourse = () => {
   const fetchClassroom = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`http://localhost:4000/api/classrooms/${classroomId}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const response = await fetch(`http://localhost:4000/api/classrooms/${classroomId}`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
-      setClassroom(response.data);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setClassroom(data);
+      } else {
+        throw new Error('Failed to fetch classroom');
+      }
     } catch (error) {
       console.error('Error fetching classroom:', error);
     }
@@ -72,36 +95,16 @@ const CreateCourse = () => {
     }));
   };
 
-  const handleFileUpload = async (e) => {
-    const files = Array.from(e.target.files);
+  const uploadFiles = async (files) => {
     setFileUploading(true);
-    
     try {
-      const token = localStorage.getItem('token');
-      const formData = new FormData();
+      // Upload multiple files to Cloudinary using the utility
+      const newFiles = await uploadMultipleToCloudinary(files, 'smart-learning/materials');
       
-      files.forEach(file => {
-        formData.append('materials', file);
-      });
-
-      const response = await axios.post('http://localhost:4000/api/upload/materials', formData, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-
-      const newFiles = response.data.files.map(file => ({
-        name: file.originalname,
-        url: file.url,
-        size: file.size,
-        type: file.mimetype
-      }));
-
       setUploadedFiles(prev => [...prev, ...newFiles]);
       setCourse(prev => ({
         ...prev,
-        materials: [...prev.materials, ...newFiles.map(f => f.url)]
+        materials: [...prev.materials, ...newFiles.map(f => f.cloudinaryUrl)]
       }));
     } catch (error) {
       console.error('Error uploading files:', error);
@@ -147,11 +150,20 @@ const CreateCourse = () => {
         instructor: localStorage.getItem('userId')
       };
 
-      const response = await axios.post('http://localhost:4000/api/courses', payload, {
-        headers: { Authorization: `Bearer ${token}` }
+      const response = await fetch('http://localhost:4000/api/courses', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
       });
 
-      navigate(`/instructor/classroom/${classroomId}`);
+      if (response.ok) {
+        navigate(`/instructor/classroom/${classroomId}`);
+      } else {
+        throw new Error('Failed to create course');
+      }
     } catch (error) {
       console.error('Error creating course:', error);
     } finally {
@@ -404,7 +416,7 @@ const CreateCourse = () => {
                     id="file-upload"
                     type="file"
                     multiple
-                    onChange={handleFileUpload}
+                    onChange={(e) => uploadFiles(Array.from(e.target.files))}
                     className="hidden"
                     accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.jpg,.jpeg,.png"
                   />
